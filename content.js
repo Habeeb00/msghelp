@@ -1,32 +1,28 @@
-// Minimal WhatsApp Web DOM-based message retriever
-// - Only reads from the page DOM
-// - Finds existing messages on load and observes new messages via MutationObserver
-// - Saves messages into chrome.storage.local.messages (most recent first)
+// Minimal WhatsApp Web DOM-based message retriever (enhanced)
+// - Detects message bubbles only
+// - Ignores sidebar, header, UI fragments, media wrappers
+// - Works with WhatsApp virtualized DOM / portals
+// - Saves newest messages to chrome.storage.local.messages
 
 (function () {
-  if (!location.hostname.includes("web.whatsapp.com")) {
-    // not the target site
-    return;
-  }
-  // (debug banner removed in trimmed build) -- keep console logs for debugging
-  console.log("[CONTENT] WhatsApp DOM retriever loaded (minimal)");
-  // (postMessage removed in trimmed build)
+  if (!location.hostname.includes("web.whatsapp.com")) return;
 
-  // Minimal selectors: prefer the WhatsApp message marker. Keep container simple.
-  const messageSelectors = ["div[data-pre-plain-text]"];
-  const containerCandidates = ["#main"];
+  console.log("[CONTENT] WhatsApp DOM retriever loaded ✅");
+
+  // WhatsApp text bubble selectors
+  const messageSelectors = [
+    "div[data-pre-plain-text]", // reliable message marker
+    "div[role='row']", // WA also uses rows for messages
+  ];
+
   const MAX_HISTORY = 5;
-
-  // small recent cache to avoid duplicates
   const recent = [];
   const RECENT_LIMIT = 5;
-
-  // counters for diagnostics
-  const skipCounters = { mediaOnly: 0, uiTokens: 0, duplicates: 0 };
 
   function seen(key) {
     return recent.indexOf(key) !== -1;
   }
+
   function pushRecent(key) {
     recent.unshift(key);
     if (recent.length > RECENT_LIMIT) recent.pop();
@@ -39,12 +35,55 @@
       .trim();
   }
 
+  // Safely read className value as a lowercase string. Handles SVGAnimatedString (baseVal) too.
+  function safeClassName(node) {
+    if (!node) return "";
+    const cn = node.className;
+    if (!cn) return "";
+    if (typeof cn === "string") return cn.toLowerCase();
+    if (typeof cn === "object" && cn.baseVal)
+      return String(cn.baseVal).toLowerCase();
+    try {
+      return String(cn).toLowerCase();
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function getChatTitleByYourMethod() {
+    try {
+      // Step 1: find the long participant preview span
+      const preview = document.querySelector("#main header span[title]");
+      if (!preview) return "";
+
+      // Step 2: climb to nearest wrapping div (header)
+      const header = preview.closest("header") || preview.parentElement;
+      if (!header) return "";
+
+      // Step 3: inside that header, find the real visible title
+      const titleEl = header.querySelector("span[dir='auto']");
+      if (!titleEl) return "";
+
+      return titleEl.innerText.trim();
+    } catch (e) {
+      return "";
+    }
+  }
+
+  // Backwards-compatible active chat info extractor. Uses the title extractor above
+  // and falls back to URL hash when necessary.
+  function getActiveChatInfo() {
+    const chatTitle = normalizeSpaces(String(getChatTitleByYourMethod() || ""));
+    const hrefHash = (location.hash || "").replace(/^#/, "");
+    const sessionId = chatTitle
+      ? `${chatTitle}::${hrefHash || "local"}`
+      : hrefHash || `unknown::${location.pathname}`;
+    return { sessionId, chatTitle, hrefHash };
+  }
+
   function getTextFromElement(el) {
     if (!el) return "";
 
-    // Prefer rendered innerText. If that's empty, fall back to textContent or
-    // collect text from common descendant tags (span, p, div) which WhatsApp
-    // often uses for message fragments.
     try {
       const rendered = (el.innerText || "").toString().trim();
       if (rendered) return normalizeSpaces(rendered);
@@ -64,255 +103,193 @@
     }
   }
 
+  function containsMedia(el) {
+    if (!el || el.nodeType !== 1) return false;
+    const mediaSel = "img, video, audio, svg, picture, canvas, iframe";
+    if (el.querySelector(mediaSel)) return true;
+
+    const mediaAttrSel =
+      '[data-testid*="sticker"], [data-testid*="media"], [data-testid*="video"], [data-testid*="image"], [role="img"]';
+    if (el.querySelector(mediaAttrSel)) return true;
+
+    return false;
+  }
+
+  function isLikelyNonMessage(text) {
+    if (!text) return true;
+    const t = text.trim();
+
+    if (/^\d{1,2}:\d{2}$/.test(t)) return true;
+    if (/^ic[-_][\w-]+$/i.test(t)) return true;
+
+    if (
+      /^(play|pause|download|reply|delete|media|sticker|audio|video|image|mic|mute|close|open|send|save)s?$/i.test(
+        t
+      )
+    )
+      return true;
+
+    if (/^[^\p{L}\p{N}]+$/u.test(t)) return true;
+
+    if (t.length <= 2 && !/[A-Za-z0-9]/.test(t)) return true;
+
+    return false;
+  }
+
+  // ✅ NEW: Filter to ensure element is an actual chat bubble
+  function isChatBubble(el) {
+    // must be inside main chat pane
+    if (!el.closest("#main")) return false;
+
+    // must NOT be in the left sidebar
+    if (el.closest("#pane-side")) return false;
+
+    // must contain selectable text
+    const textNode = el.querySelector("span.selectable-text");
+    if (!textNode) return false;
+
+    const txt = textNode.innerText.trim();
+    if (!txt) return false;
+
+    if (isLikelyNonMessage(txt)) return false;
+
+    // must not be media-only
+    if (containsMedia(el)) return false;
+
+    return true;
+  }
+
   function guessDirection(el) {
     let node = el;
     for (let i = 0; i < 6 && node; i++, node = node.parentElement) {
-      const cls = (node.className || "").toString().toLowerCase();
-      if (cls.indexOf("message-out") !== -1 || cls.indexOf("out") !== -1)
-        return "outgoing";
-      if (cls.indexOf("message-in") !== -1 || cls.indexOf("in") !== -1)
-        return "incoming";
+      const cls = safeClassName(node);
+      if (cls.includes("message-out") || cls.includes("out")) return "outgoing";
+      if (cls.includes("message-in") || cls.includes("in")) return "incoming";
     }
     return "unknown";
   }
 
   function saveMessage(msg) {
-    chrome.storage.local.get(["messages"], ({ messages = [] }) => {
-      // avoid duplicate consecutive saves: if the most recent stored message
-      // has the same text and type, skip saving to prevent duplication.
-      if (
-        messages &&
-        messages.length &&
-        messages[0] &&
-        messages[0].text === msg.text &&
-        messages[0].type === msg.type
-      ) {
-        skipCounters.duplicates += 1;
-        console.log(
-          `[CONTENT] skipped duplicate (#${skipCounters.duplicates})`,
-          msg.text
-        );
+    try {
+      if (!chrome || !chrome.storage || !chrome.storage.local) {
+        console.warn("[CONTENT] storage not available — skipping save");
         return;
       }
-      messages.unshift(msg);
-      messages = messages.slice(0, MAX_HISTORY);
-      chrome.storage.local.set({ messages }, () => {
-        console.log(
-          "[CONTENT] saved",
-          msg.type,
-          "@",
-          msg.platform,
-          msg.text.substring(0, 120)
-        );
-      });
-    });
-  }
 
-  // return true if the given element or any descendant looks like media
-  function containsMedia(el) {
-    try {
-      if (!el || el.nodeType !== 1) return false;
-      // common media tags
-      const mediaSel = "img, video, audio, svg, picture, canvas, iframe";
-      if (el.querySelector && el.querySelector(mediaSel)) return true;
-
-      // some WhatsApp elements or web clients use data-testid or role attributes
-      const mediaAttrSel =
-        '[data-testid*="sticker"], [data-testid*="media"], [data-testid*="video"], [data-testid*="image"], [role="img"]';
-      if (el.querySelector && el.querySelector(mediaAttrSel)) return true;
-
-      // check for aria-label hints (e.g. "image" or "video")
-      const nodes = el.querySelectorAll ? el.querySelectorAll("*") : [];
-      for (let i = 0; i < nodes.length; i++) {
-        const n = nodes[i];
+      chrome.storage.local.get(["messages"], ({ messages = [] } = {}) => {
         try {
-          const aria = n.getAttribute && n.getAttribute("aria-label");
-          if (aria && /image|photo|video|sticker|audio|voice/i.test(aria))
-            return true;
-        } catch (e) {}
-      }
-    } catch (e) {}
-    return false;
+          // Prevent consecutive duplicate within the same chat/session
+          if (
+            messages[0]?.text === msg.text &&
+            messages[0]?.type === msg.type &&
+            messages[0]?.sessionId === msg.sessionId
+          ) {
+            console.log("[CONTENT] skipped duplicate (same session)");
+            return;
+          }
+
+          messages.unshift(msg);
+          chrome.storage.local.set(
+            { messages: messages.slice(0, MAX_HISTORY) },
+            () => {
+              if (chrome.runtime?.lastError) {
+                console.warn(
+                  "[CONTENT] storage.set error",
+                  chrome.runtime.lastError
+                );
+              } else {
+                console.log("[CONTENT] ✅ saved", msg.text, {
+                  session: msg.sessionId,
+                });
+              }
+            }
+          );
+        } catch (cbErr) {
+          console.warn("[CONTENT] saveMessage callback error", cbErr);
+        }
+      });
+    } catch (err) {
+      // This can happen if the extension context is invalidated (reload/uninstall)
+      console.warn(
+        "[CONTENT] storage unavailable or extension context invalidated — skipping save",
+        err
+      );
+    }
   }
 
-  // Heuristic to detect UI/control text that should not be treated as a user message
-  function isLikelyNonMessage(text, el) {
-    if (!text) return true;
-    const t = text.trim();
-    // durations like 0:26 or 12:34
-    if (/^\d{1,2}:\d{2}$/.test(t)) return true;
-    // icon or resource names like ic-mood, ic-chevron-down-wide
-    if (/^ic[-_][\w-]+$/i.test(t)) return true;
-    // common UI labels or control tokens
-    if (
-      /^(play|pause|download|forward|reply|delete|media|sticker|audio|video|image|mic|mute|unmute|cancel|more|close|open|next|prev|send|save|preview)s?$/i.test(
-        t
-      )
-    )
-      return true;
-    // tokens containing 'audio-play' or 'media-cancel' etc
-    if (
-      /(audio|media|sticker|icon|btn|control|play|pause|download)/i.test(t) &&
-      /[-_]/.test(t)
-    )
-      return true;
-    // only punctuation or symbols (no letters/digits)
-    if (/^[^\p{L}\p{N}]+$/u.test(t)) return true;
-    // very short tokens that contain no letter (e.g., ':' or '-')
-    if (t.length <= 2 && !/[A-Za-z0-9]/.test(t)) return true;
-    return false;
-  }
-
-  function handleElement(el) {
-    // prefer an ancestor that looks like a message container
-    const container = findNearestMessageContainer(el) || el;
-
-    // skip containers that include media (images, videos, stickers, audio)
-    if (containsMedia(container)) return;
-
-    const text = getTextFromElement(container);
-    if (!text) return;
-    // skip UI-like tokens (durations, icon names, control labels)
-    if (isLikelyNonMessage(text, container)) return;
-    const key = text;
-    if (seen(key)) return;
-    pushRecent(key);
-    const m = {
-      text,
-      platform: "whatsapp",
-      timestamp: Date.now(),
-      type: guessDirection(container),
-    };
-    saveMessage(m);
-  }
-
-  function scanExisting() {
-    // Scan explicit selectors only (minimal mode)
-    messageSelectors.forEach((sel) => {
-      try {
-        const nodes = document.querySelectorAll(sel);
-        if (nodes && nodes.length) nodes.forEach((n) => handleElement(n));
-      } catch (e) {
-        /* ignore selector errors */
-      }
-    });
-  }
-
-  // findChatArea removed in minimal mode (unused fallback heuristics)
-
-  // Find nearest element that looks like a message container by climbing
-  // ancestors looking for known markers. Return null if none found.
   function findNearestMessageContainer(el) {
     let node = el;
     for (let i = 0; i < 8 && node; i++, node = node.parentElement) {
       try {
-        if (node.matches && node.matches("div[data-pre-plain-text]"))
-          return node;
+        if (node.matches?.("div[data-pre-plain-text]")) return node;
       } catch (e) {}
-      const cls = (node.className || "").toString().toLowerCase();
-      if (cls.indexOf("message-") !== -1 || cls.indexOf("message") !== -1)
+
+      const cls = safeClassName(node);
+      if (cls.includes("message")) return node;
+
+      if (
+        node.classList?.contains("copyable-text") ||
+        node.classList?.contains("selectable-text")
+      )
         return node;
-      try {
-        if (
-          node.classList &&
-          (node.classList.contains("copyable-text") ||
-            node.classList.contains("selectable-text"))
-        )
-          return node;
-      } catch (e) {}
     }
     return null;
   }
 
-  // walkTextNodes removed in minimal mode
+  function handleElement(el) {
+    const container = findNearestMessageContainer(el) || el;
+    if (!isChatBubble(container)) return;
+
+    const text = getTextFromElement(container);
+    if (!text) return;
+    if (isLikelyNonMessage(text)) return;
+
+    const info = getActiveChatInfo();
+    const sessionKey = `${info.sessionId}::${text}`;
+    if (seen(sessionKey)) return;
+
+    pushRecent(sessionKey);
+
+    saveMessage({
+      text,
+      timestamp: Date.now(),
+      platform: "whatsapp",
+      type: guessDirection(container),
+      sessionId: info.sessionId,
+      chatTitle: info.chatTitle,
+    });
+  }
+
+  function scanExisting() {
+    messageSelectors.forEach((sel) => {
+      const nodes = document.querySelectorAll(sel);
+      nodes.forEach((n) => handleElement(n));
+    });
+  }
 
   function attachObserver() {
-    // helper to set up observers on a specific container
-    function setupObservers(container, label) {
-      try {
-        console.log(
-          "[CONTENT] attaching observer to",
-          label || container.tagName
-        );
-        const obs = new MutationObserver((mutations) => {
-          const seenContainers = new Set();
-          mutations.forEach((m) => {
-            m.addedNodes.forEach((node) => {
-              if (!node) return;
+    const body = document.body;
+    if (!body) return console.warn("[CONTENT] document.body not ready");
 
-              // 1) Try the usual selector matches inside node
-              messageSelectors.forEach((ms) => {
-                try {
-                  const found = node.querySelectorAll
-                    ? node.querySelectorAll(ms)
-                    : null;
-                  if (found && found.length)
-                    found.forEach((f) => {
-                      const c = findNearestMessageContainer(f) || f;
-                      if (c && !seenContainers.has(c)) {
-                        seenContainers.add(c);
-                        handleElement(c);
-                      }
-                    });
-                } catch (e) {}
-              });
+    console.log("[CONTENT] observing document.body");
 
-              // 3) the node itself may be a message container
-              try {
-                const c2 =
-                  findNearestMessageContainer(node) ||
-                  (node.nodeType === 1 ? node : null);
-                if (c2 && !seenContainers.has(c2)) {
-                  seenContainers.add(c2);
-                  handleElement(c2);
-                }
-              } catch (e) {}
-            });
+    const obs = new MutationObserver((mutations) => {
+      mutations.forEach((m) => {
+        m.addedNodes.forEach((node) => {
+          if (!node?.querySelectorAll) return;
+
+          messageSelectors.forEach((sel) => {
+            node.querySelectorAll(sel).forEach((f) => handleElement(f));
           });
+
+          handleElement(node);
         });
-        obs.observe(container, { childList: true, subtree: true });
-
-        return true;
-      } catch (e) {
-        return false;
-      }
-    }
-
-    for (const sel of containerCandidates) {
-      const container = document.querySelector(sel);
-      if (!container) continue;
-      if (setupObservers(container, sel)) return true;
-    }
-
-    // fallback: try attaching observers to document.body once (no retry interval)
-    try {
-      if (document.body) {
-        return setupObservers(document.body, "document.body");
-      }
-    } catch (e) {}
-    return false;
-  }
-
-  // start
-  scanExisting();
-  if (!attachObserver()) {
-    console.warn("[CONTENT] attachObserver() failed to attach observers");
-  }
-  // allow requests from popup/UI to trigger an immediate scan
-  try {
-    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-      if (msg && msg.type === "SCAN_NOW") {
-        try {
-          scanExisting();
-          sendResponse({ ok: true });
-        } catch (e) {
-          sendResponse({ ok: false, error: e && e.message });
-        }
-        return true;
-      }
-      return false;
+      });
     });
-  } catch (e) {
-    // not in extension context
+
+    obs.observe(body, { childList: true, subtree: true });
   }
+
+  scanExisting();
+  attachObserver();
 })();
