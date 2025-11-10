@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timedelta
 import hashlib
 import json
+from dotenv import load_dotenv
 
 # LangGraph imports
 from langgraph.graph import StateGraph, END
@@ -24,9 +25,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Together AI
-client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
-FINE_TUNED_MODEL = os.getenv("FINE_TUNED_MODEL_ID", "your-fine-tuned-model-id")
+load_dotenv(dotenv_path=".env")
+
+api_key = os.getenv("TOGETHER_API_KEY")
+client = Together(api_key=api_key)
+FINE_TUNED_MODEL = os.getenv("FINE_TUNED_MODEL")
 
 # In-memory storage (use Redis in production)
 sessions = {}
