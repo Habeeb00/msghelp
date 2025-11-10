@@ -2,18 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Manslater Toggle</title>
-    <link rel="stylesheet" href="popup.css" />
+    <title>Manslater Capture</title>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="container">
-      <h1 class="title">Extension Status</h1>
-      <label class="toggle">
-        <input id="extToggle" type="checkbox" />
-        <span class="slider"></span>
-        <span class="label-text" id="stateText">Disabled</span>
-      </label>
-      <p class="hint">Use this switch to enable or disable behavior.</p>
+      <h1>Message Capture</h1>
+      <button id="captureBtn">Capture Message</button>
+      <button id="clearBtn">Clear All</button>
+      <div id="status"></div>
+      <div id="messages"></div>
     </div>
     <script src="popup.js"></script>
   </body>
