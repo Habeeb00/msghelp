@@ -1,0 +1,6 @@
+fastapi 
+uvicorn 
+together 
+langgraph 
+typing-extensions 
+python-dotenv
