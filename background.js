@@ -1,63 +1,78 @@
-// Background Service Worker - Message Storage
-const MAX_MESSAGES = 20;
+// Background Service Worker
+let enabled = false;
+let outgoingBuffer = [];
 
-console.log('[BACKGROUND] Service worker initialized');
+console.log("[BG] Service worker initialized");
 
-// Simple hash function for deduplication
-function hashCode(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash = hash & hash;
-  }
-  const result = hash.toString(36);
-  console.log(`[HASH] Generated hash: ${result} for text: "${str.substring(0, 30)}..."`);
-  return result;
-}
-
-// Store message
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  console.log('[BACKGROUND] Received message:', msg.type);
-  
-  if (msg.type === "STORE_MESSAGE") {
-    console.log('[STORE] Attempting to store message:', msg.message.text.substring(0, 50));
-    
-    chrome.storage.local.get(["messages"], (data) => {
-      const messages = data.messages || [];
-      console.log(`[STORE] Current messages count: ${messages.length}`);
-      
-      const hash = hashCode(msg.message.text);
+  console.log("[BG] msg:", msg.type);
 
-      // Check for duplicates
-      if (messages.some((m) => m.hash === hash)) {
-        console.warn('[STORE] DUPLICATE detected! Hash:', hash);
-        sendResponse({ success: false, error: "Duplicate message" });
-        return;
-      }
+  if (msg.type === "ENABLE_EXTENSION") {
+    enabled = true;
+    chrome.storage.local.set({ enabled: true });
+    console.log("[BG] Extension ENABLED");
 
-      // Add message with hash
-      const newMessage = { ...msg.message, hash };
-      messages.unshift(newMessage);
-      console.log('[STORE] Message added with hash:', hash);
-
-      // Keep only last 20
-      const trimmed = messages.slice(0, MAX_MESSAGES);
-      console.log(`[STORE] Trimmed to ${trimmed.length} messages (max: ${MAX_MESSAGES})`);
-
-      chrome.storage.local.set({ messages: trimmed }, () => {
-        console.log('[STORE] ✓ Successfully saved to storage');
-        sendResponse({ success: true, count: trimmed.length });
-      });
+    // Send last 5 stored messages
+    chrome.storage.local.get(["messages"], ({ messages = [] }) => {
+      const last5 = messages.slice(0, 5);
+      console.log(`[BG] Sending last ${last5.length} messages`);
+      last5.forEach((m) => fetchSend(m));
     });
-    return true; // Async response
+
+    sendResponse({ ok: true });
+    return true;
   }
 
-  if (msg.type === "CLEAR_MESSAGES") {
-    console.log('[CLEAR] Clearing all messages');
-    chrome.storage.local.set({ messages: [] }, () => {
-      console.log('[CLEAR] ✓ All messages cleared');
-      sendResponse({ success: true });
+  if (msg.type === "DISABLE_EXTENSION") {
+    enabled = false;
+    outgoingBuffer = [];
+    chrome.storage.local.set({ enabled: false });
+    console.log("[BG] Extension DISABLED, buffer cleared");
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  if (!enabled) return;
+
+  if (msg.type === "CAPTURE_OUTGOING") {
+    outgoingBuffer.push(msg.message);
+    console.log(
+      `[BG] Buffered outgoing message (total: ${outgoingBuffer.length})`
+    );
+
+    // Store in chrome.storage for history
+    chrome.storage.local.get(["messages"], ({ messages = [] }) => {
+      messages.unshift(msg.message);
+      const trimmed = messages.slice(0, 20);
+      chrome.storage.local.set({ messages: trimmed });
     });
+
+    sendResponse({ buffered: true });
+    return true;
+  }
+
+  if (msg.type === "INCOMING_RECEIVED") {
+    console.log(`[BG] Incoming message received`);
+    fetchSend(msg.message);
+    sendResponse({ sent: true });
     return true;
   }
 });
+
+function fetchSend(message) {
+  const payload = {
+    text: message.text,
+    platform: message.platform || "unknown",
+    timestamp: message.timestamp || Date.now(),
+  };
+
+  console.log("[SEND]", payload);
+
+  fetch("https://manslater.onrender.com/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+    .then((r) => console.log("[SEND] status:", r.status))
+    .catch((e) => console.error("[SEND] failed:", e));
+}

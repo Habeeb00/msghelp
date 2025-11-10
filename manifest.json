@@ -15,5 +15,11 @@
   ],
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*", "https://web.telegram.org/*"],
+      "js": ["content.js"]
+    }
+  ]
 }

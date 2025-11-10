@@ -14,6 +14,7 @@
 ## 🚀 Quick Start
 
 ### 1. Install Extension
+
 ```
 1. Open Chrome → chrome://extensions/
 2. Enable "Developer mode" (top-right toggle)
@@ -24,6 +25,7 @@
 ### 2. View Debug Logs
 
 **Background Service Worker** (message storage & deduplication):
+
 ```
 1. Go to chrome://extensions/
 2. Find "Manslater Capture"
@@ -32,6 +34,7 @@
 ```
 
 **Popup** (UI & capture logic):
+
 ```
 1. Right-click extension icon
 2. Select "Inspect popup"
@@ -39,6 +42,7 @@
 ```
 
 **Injected Script** (page content extraction):
+
 ```
 1. Open DevTools on WhatsApp/Telegram page (F12)
 2. Console shows all [INJECTED] logs when capture runs
@@ -49,6 +53,7 @@
 ## 🧪 Run Automated Tests
 
 ### Option 1: Test Runner (Recommended)
+
 ```
 1. Open test-runner.html in Chrome
 2. Make sure extension is loaded
@@ -57,6 +62,7 @@
 ```
 
 ### Option 2: Manual Console Tests
+
 ```
 1. Open Chrome DevTools (F12)
 2. Copy/paste contents of test-suite.js
@@ -68,12 +74,14 @@
 ## 📋 Test Checklist
 
 ### ✅ Test 1: Basic Functionality
+
 - [ ] Extension loads without errors
 - [ ] Popup opens when clicking icon
 - [ ] Background service worker starts
 - [ ] All 3 consoles show initialization logs
 
 ### ✅ Test 2: WhatsApp Capture
+
 - [ ] Navigate to https://web.whatsapp.com
 - [ ] Type message (don't send)
 - [ ] Click "Capture Message"
@@ -81,6 +89,7 @@
 - [ ] Popup displays captured message
 
 ### ✅ Test 3: Telegram Capture
+
 - [ ] Navigate to https://web.telegram.org
 - [ ] Type message (don't send)
 - [ ] Click "Capture Message"
@@ -88,22 +97,26 @@
 - [ ] Popup displays captured message
 
 ### ✅ Test 4: Deduplication
+
 - [ ] Capture same message twice
 - [ ] Second capture shows "DUPLICATE detected!" in background logs
 - [ ] Only 1 copy appears in popup
 
 ### ✅ Test 5: Message Limit
+
 - [ ] Use test-runner.html "Generate 25 Test Messages"
 - [ ] Check storage shows only 20 messages
 - [ ] Verify logs show "Trimmed to 20 messages"
 
 ### ✅ Test 6: Backend Send
+
 - [ ] Capture a message
 - [ ] Click "Send" button
 - [ ] Check Network tab for POST to manslater.onrender.com
 - [ ] Verify JSON payload sent
 
 ### ✅ Test 7: Clear Messages
+
 - [ ] Click "Clear All"
 - [ ] Check logs show messages cleared
 - [ ] Popup shows empty list
@@ -114,70 +127,79 @@
 
 ### Background Service Worker Logs
 
-| Log | Meaning |
-|-----|---------|
-| `[BACKGROUND] Service worker initialized` | Extension loaded successfully |
-| `[HASH] Generated hash: abc123` | Message hash created for deduplication |
-| `[STORE] Attempting to store message` | New message being saved |
-| `[STORE] Current messages count: X` | Shows existing message count |
-| `[STORE] DUPLICATE detected!` | Message already exists (rejected) |
-| `[STORE] Message added with hash` | New message saved successfully |
-| `[STORE] Trimmed to X messages` | Storage limited to 20 max |
-| `[STORE] ✓ Successfully saved` | Storage write complete |
-| `[CLEAR] Clearing all messages` | Clear button clicked |
-| `[CLEAR] ✓ All messages cleared` | Storage emptied |
+| Log                                       | Meaning                                |
+| ----------------------------------------- | -------------------------------------- |
+| `[BACKGROUND] Service worker initialized` | Extension loaded successfully          |
+| `[HASH] Generated hash: abc123`           | Message hash created for deduplication |
+| `[STORE] Attempting to store message`     | New message being saved                |
+| `[STORE] Current messages count: X`       | Shows existing message count           |
+| `[STORE] DUPLICATE detected!`             | Message already exists (rejected)      |
+| `[STORE] Message added with hash`         | New message saved successfully         |
+| `[STORE] Trimmed to X messages`           | Storage limited to 20 max              |
+| `[STORE] ✓ Successfully saved`            | Storage write complete                 |
+| `[CLEAR] Clearing all messages`           | Clear button clicked                   |
+| `[CLEAR] ✓ All messages cleared`          | Storage emptied                        |
 
 ### Popup Logs
 
-| Log | Meaning |
-|-----|---------|
-| `[POPUP] Popup initialized` | Popup opened |
-| `[POPUP] Loading messages from storage` | Reading saved messages |
-| `[POPUP] Found X messages` | Number of messages loaded |
-| `[POPUP] ✓ Messages rendered` | UI updated |
-| `[POPUP] Capture button clicked` | User clicked capture |
-| `[POPUP] Active tab URL: ...` | Current page URL |
-| `[POPUP] Injecting script into tab` | About to extract message |
-| `[POPUP] Script execution result` | Message extracted |
-| `[POPUP] Sending message to backend` | POST request starting |
-| `[POPUP] Backend response status: 200` | Backend responded |
-| `[POPUP] Clear button clicked` | Clear all clicked |
+| Log                                     | Meaning                   |
+| --------------------------------------- | ------------------------- |
+| `[POPUP] Popup initialized`             | Popup opened              |
+| `[POPUP] Loading messages from storage` | Reading saved messages    |
+| `[POPUP] Found X messages`              | Number of messages loaded |
+| `[POPUP] ✓ Messages rendered`           | UI updated                |
+| `[POPUP] Capture button clicked`        | User clicked capture      |
+| `[POPUP] Active tab URL: ...`           | Current page URL          |
+| `[POPUP] Injecting script into tab`     | About to extract message  |
+| `[POPUP] Script execution result`       | Message extracted         |
+| `[POPUP] Sending message to backend`    | POST request starting     |
+| `[POPUP] Backend response status: 200`  | Backend responded         |
+| `[POPUP] Clear button clicked`          | Clear all clicked         |
 
 ### Injected Script Logs
 
-| Log | Meaning |
-|-----|---------|
-| `[INJECTED] Running on hostname: ...` | Platform detected |
-| `[INJECTED] WhatsApp detected` | WhatsApp Web identified |
-| `[INJECTED] Telegram detected` | Telegram Web identified |
-| `[INJECTED] Found text: "..."` | Message text extracted |
+| Log                                   | Meaning                 |
+| ------------------------------------- | ----------------------- |
+| `[INJECTED] Running on hostname: ...` | Platform detected       |
+| `[INJECTED] WhatsApp detected`        | WhatsApp Web identified |
+| `[INJECTED] Telegram detected`        | Telegram Web identified |
+| `[INJECTED] Found text: "..."`        | Message text extracted  |
 
 ---
 
 ## 🔍 Common Issues & Solutions
 
 ### Issue: No logs appear
+
 **Solution**: Make sure you're looking at the correct console:
+
 - Background logs → chrome://extensions/ → "service worker"
 - Popup logs → Right-click icon → "Inspect popup"
 - Injected logs → F12 on WhatsApp/Telegram page
 
 ### Issue: "Error: Not on WhatsApp/Telegram"
+
 **Solution**: Make sure you're on:
+
 - https://web.whatsapp.com (not web.telegram.org)
 - https://web.telegram.org (not web.whatsapp.com)
 
 ### Issue: "No message found"
-**Solution**: 
+
+**Solution**:
+
 - Type text in the input field
 - Don't send it yet
 - Then click "Capture Message"
 
 ### Issue: Duplicate not detected
+
 **Solution**: Text must be EXACTLY the same (including spaces, case)
 
 ### Issue: Backend send fails
-**Solution**: 
+
+**Solution**:
+
 - Check internet connection
 - Verify backend is running at https://manslater.onrender.com
 - Check Network tab for exact error
@@ -239,14 +261,16 @@ Core logic:     ~150 lines (without debug logs)
 ✅ Messages persist after popup closes  
 ✅ Backend POST requests sent successfully  
 ✅ Clear function empties storage  
-✅ No console errors during normal operation  
+✅ No console errors during normal operation
 
 ---
 
 **Happy Testing!** 🚀
 
 ## Customization
+
 Replace the logic inside `content.js` with actual functionality. Use `chrome.storage.local.get('enabled')` everywhere you need to respect the toggle.
 
 ## Uninstall
+
 Remove from `chrome://extensions`.
