@@ -1,18 +1,48 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
   <head>
-    <meta charset="UTF-8" />
+    <meta charset="utf-8" />
     <title>Manslater</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="container">
-      <h1>Manslater Extension</h1>
+      <h1>Manslater</h1>
       <label>
         <input type="checkbox" id="toggle" />
         <span>Enable Extension</span>
       </label>
       <div id="status">Extension OFF</div>
+      <button id="selftest">Run self-test (E2E)</button>
+      <div
+        id="selftestResult"
+        style="margin-top: 8px; font-size: 12px; color: #333"
+      ></div>
+      <hr />
+      <h3 style="margin-top: 8px; font-size: 14px">
+        Captured messages
+        <small id="msgCount" style="font-size: 11px; color: #666">(0)</small>
+      </h3>
+      <div style="display: flex; gap: 8px; margin-bottom: 6px">
+        <button id="clearBtn" style="font-size: 12px">Clear</button>
+        <button id="exportBtn" style="font-size: 12px">Export JSON</button>
+        <button id="scanBtn" style="font-size: 12px">
+          Scan active chat now
+        </button>
+      </div>
+      <div
+        id="messagesList"
+        style="
+          max-height: 300px;
+          overflow: auto;
+          font-size: 12px;
+          background: #fafafa;
+          padding: 6px;
+          border: 1px solid #eee;
+          border-radius: 4px;
+        "
+      ></div>
     </div>
     <script src="popup.js"></script>
   </body>

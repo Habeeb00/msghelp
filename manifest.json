@@ -1,25 +1,19 @@
 {
-  "name": "Manslater Capture",
-  "description": "Capture messages from WhatsApp and Telegram",
+  "name": "Manslater Capture (Minimal)",
+  "description": "Minimal extension that retrieves messages from WhatsApp Web DOM and stores them locally.",
   "version": "1.0.0",
   "manifest_version": 3,
   "action": {
     "default_title": "Manslater Capture",
     "default_popup": "popup.html"
   },
-  "permissions": ["storage", "activeTab", "scripting"],
-  "host_permissions": [
-    "https://web.whatsapp.com/*",
-    "https://web.telegram.org/*",
-    "https://manslater.onrender.com/*"
-  ],
-  "background": {
-    "service_worker": "background.js"
-  },
+  "permissions": ["storage"],
+  "host_permissions": ["https://web.whatsapp.com/*"],
   "content_scripts": [
     {
-      "matches": ["https://web.whatsapp.com/*", "https://web.telegram.org/*"],
-      "js": ["content.js"]
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
     }
   ]
 }
