@@ -24,12 +24,59 @@
         Captured messages
         <small id="msgCount" style="font-size: 11px; color: #666">(0)</small>
       </h3>
-      <div style="display: flex; gap: 8px; margin-bottom: 6px">
-        <button id="clearBtn" style="font-size: 12px">Clear</button>
-        <button id="exportBtn" style="font-size: 12px">Export JSON</button>
-        <button id="scanBtn" style="font-size: 12px">
-          Scan active chat now
+      <div
+        id="contextStatus"
+        style="font-size: 11px; color: #666; margin-bottom: 8px"
+      >
+        Context status: <span id="contextInfo">Unknown</span>
+      </div>
+      <div style="display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap">
+        <button id="clearBtn" style="font-size: 11px; padding: 4px 8px">
+          Clear
         </button>
+        <button id="exportBtn" style="font-size: 11px; padding: 4px 8px">
+          Export JSON
+        </button>
+        <button id="scanBtn" style="font-size: 11px; padding: 4px 8px">
+          Scan active chat
+        </button>
+        <button
+          id="resetBtn"
+          style="
+            font-size: 11px;
+            padding: 4px 8px;
+            background: #ff6b6b;
+            color: white;
+          "
+        >
+          Reset Context
+        </button>
+        <button
+          id="debugBtn"
+          style="
+            font-size: 11px;
+            padding: 4px 8px;
+            background: #4ecdc4;
+            color: white;
+          "
+        >
+          Debug Info
+        </button>
+      </div>
+      <div
+        id="statsInfo"
+        style="
+          font-size: 10px;
+          color: #888;
+          margin-bottom: 6px;
+          padding: 4px;
+          background: #f0f0f0;
+          border-radius: 3px;
+        "
+      >
+        Context: <span id="contextCount">0</span> | New:
+        <span id="newCount">0</span> | Session:
+        <span id="currentSession">None</span>
       </div>
       <div
         id="messagesList"

@@ -8,6 +8,12 @@ const msgCount = document.getElementById("msgCount");
 const clearBtn = document.getElementById("clearBtn");
 const exportBtn = document.getElementById("exportBtn");
 const scanBtn = document.getElementById("scanBtn");
+const resetBtn = document.getElementById("resetBtn");
+const debugBtn = document.getElementById("debugBtn");
+const contextInfo = document.getElementById("contextInfo");
+const contextCount = document.getElementById("contextCount");
+const newCount = document.getElementById("newCount");
+const currentSession = document.getElementById("currentSession");
 
 function formatTime(ts) {
   try {
@@ -29,6 +35,19 @@ function renderMessages() {
     messages = messages.slice(0, 5);
     messagesList.innerHTML = "";
     msgCount.textContent = `(${messages.length})`;
+
+    // Calculate stats
+    const contextMsgs = messages.filter((m) => m.isContext);
+    const newMsgs = messages.filter((m) => !m.isContext);
+    const sessions = [
+      ...new Set(messages.map((m) => m.sessionId || "unknown")),
+    ];
+
+    contextCount.textContent = contextMsgs.length;
+    newCount.textContent = newMsgs.length;
+    currentSession.textContent = sessions.length > 0 ? sessions[0] : "None";
+    contextInfo.textContent = contextMsgs.length > 0 ? "Loaded" : "Not loaded";
+
     if (!messages || messages.length === 0) {
       messagesList.textContent = "No messages captured yet.";
       return;
@@ -38,15 +57,27 @@ function renderMessages() {
       const row = document.createElement("div");
       row.style.borderBottom = "1px solid #eee";
       row.style.padding = "6px 4px";
-      row.innerHTML = `<div style="font-size:11px;color:#666">${
-        idx + 1
-      }. ${escapeHtml(m.type || "")} @ ${escapeHtml(
-        m.platform || ""
-      )} — ${formatTime(
-        m.timestamp
-      )}</div><div style="margin-top:4px;white-space:pre-wrap">${escapeHtml(
-        m.text
-      )}</div>`;
+
+      // Add session info and type indicators
+      const sessionInfo = m.sessionId
+        ? `📱 ${escapeHtml(m.chatTitle || "Unknown Chat")}`
+        : "";
+      const messageType = m.isContext ? "📖 Context" : "💬 New";
+      const directionIcon =
+        m.type === "outgoing" ? "➡️" : m.type === "incoming" ? "⬅️" : "❓";
+
+      row.innerHTML = `
+        <div style="font-size:11px;color:#666; display: flex; justify-content: space-between;">
+          <span>${idx + 1}. ${messageType} ${directionIcon} ${escapeHtml(
+        m.type || ""
+      )}</span>
+          <span>${formatTime(m.timestamp)}</span>
+        </div>
+        <div style="font-size:10px;color:#999;margin-top:2px;">${sessionInfo}</div>
+        <div style="margin-top:4px;white-space:pre-wrap;background:${
+          m.isContext ? "#f8f9fa" : "#e8f5e9"
+        };padding:4px;border-radius:3px;">${escapeHtml(m.text)}</div>
+      `;
       messagesList.appendChild(row);
     });
   });
@@ -165,6 +196,50 @@ exportBtn.addEventListener("click", async () => {
       w.document.open();
       w.document.write("<pre>" + escapeHtml(json) + "</pre>");
       w.document.close();
+    }
+  });
+});
+
+// Add handlers for new testing buttons
+resetBtn.addEventListener("click", () => {
+  chrome.storage.local.clear(() => {
+    // Send message to content script to reset its state
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: "RESET_STATE" });
+      }
+    });
+    renderMessages();
+    selftestResult.textContent = "Reset complete - all data cleared";
+    setTimeout(() => (selftestResult.textContent = ""), 2000);
+  });
+});
+
+debugBtn.addEventListener("click", () => {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0]) {
+      chrome.tabs.sendMessage(
+        tabs[0].id,
+        { type: "GET_DEBUG_INFO" },
+        (response) => {
+          if (response) {
+            const debugInfo = `Debug Info:
+Existing Messages: ${response.existingMessagesCount}
+Recent Buffer: ${response.recentCount}
+Current Session: ${response.currentSessionId}
+Last Chat Change: ${response.lastChatChangeTime}
+Total Messages in Storage: ${response.storageCount}`;
+
+            selftestResult.textContent = "Debug info displayed in alert";
+            alert(debugInfo);
+            setTimeout(() => (selftestResult.textContent = ""), 2000);
+          } else {
+            selftestResult.textContent =
+              "No response from content script. Make sure you are on WhatsApp Web.";
+            setTimeout(() => (selftestResult.textContent = ""), 3000);
+          }
+        }
+      );
     }
   });
 });
