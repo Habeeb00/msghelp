@@ -29,7 +29,7 @@ app.add_middleware(
 
 # Initialize Together AI
 client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
-FINE_TUNED_MODEL = os.getenv("FINE_TUNED_MODEL_ID", "your-fine-tuned-model-id")
+FINE_TUNED_MODEL = os.getenv("FINE_TUNED_MODEL", "your-fine-tuned-model-id")
 
 # In-memory storage (use Redis in production)
 sessions = {}
