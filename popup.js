@@ -15,7 +15,7 @@ const contextInfo = document.getElementById("contextInfo");
 const contextCount = document.getElementById("contextCount");
 const newCount = document.getElementById("newCount");
 const currentSession = document.getElementById("currentSession");
-const API_ENDPOINT = "http://localhost:8000/suggest-reply"; // Replace with your backend API endpoint
+const API_ENDPOINT = "https://msghelp.onrender.com/suggest-reply"; // Replace with your backend API endpoint
 
 function formatTime(ts) {
   try {
