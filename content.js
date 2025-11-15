@@ -43,13 +43,17 @@ function containsMedia(el) {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
+  // State management for minimized/expanded
+  // Initialize to false; actual persisted value will be read when injecting
+  let isMinimized = false;
+
   // Floating UI for suggestions
   function injectFloatingBox() {
-    // Remove existing box if it exists
+    // Remove existing boxes if they exist
     const existingBox = document.getElementById("msghelp-floating-box");
-    if (existingBox) {
-      existingBox.remove();
-    }
+    const existingBubble = document.getElementById("msghelp-minimized-bubble");
+    if (existingBox) existingBox.remove();
+    if (existingBubble) existingBubble.remove();
 
     // Find the chat container to position relative to it
     const chatContainer = document.querySelector("#main");
@@ -59,6 +63,91 @@ function containsMedia(el) {
       return;
     }
 
+    // Read persisted minimized state so the UI persists across session/chat changes
+    try {
+      chrome.storage.local.get(["msghelpIsMinimized"], (res) => {
+        try {
+          isMinimized = !!res.msghelpIsMinimized;
+        } catch (e) {
+          isMinimized = false;
+        }
+        // Create minimized bubble first
+        createMinimizedBubble(chatContainer);
+        // Create main floating box
+        createMainFloatingBox(chatContainer);
+      });
+    } catch (e) {
+      // If storage unavailable, fall back to in-memory state
+      console.warn(
+        "[CONTENT] chrome.storage unavailable, using in-memory minimized state",
+        e
+      );
+      createMinimizedBubble(chatContainer);
+      createMainFloatingBox(chatContainer);
+    }
+  }
+
+  // Create the minimized bubble that appears at the side
+  function createMinimizedBubble(chatContainer) {
+    const bubble = document.createElement("div");
+    bubble.id = "msghelp-minimized-bubble";
+    bubble.style.position = "absolute";
+    bubble.style.top = "50%";
+    bubble.style.right = "20px";
+    bubble.style.transform = "translateY(-50%)";
+    bubble.style.zIndex = "999";
+    bubble.style.width = "60px";
+    bubble.style.height = "60px";
+    bubble.style.borderRadius = "50%";
+    bubble.style.background = "rgba(255, 255, 255, 0.08)";
+    bubble.style.backdropFilter = "blur(20px)";
+    bubble.style.WebkitBackdropFilter = "blur(20px)";
+    bubble.style.border = "1px solid rgba(255, 255, 255, 0.2)";
+    bubble.style.cursor = "pointer";
+    bubble.style.display = "flex";
+    bubble.style.alignItems = "center";
+    bubble.style.justifyContent = "center";
+    // Use specific transitions for transform & opacity for smoother motion
+    bubble.style.transition =
+      "transform 420ms cubic-bezier(0.2,0.9,0.2,1), opacity 320ms cubic-bezier(0.2,0.9,0.2,1)";
+    bubble.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.12)";
+    bubble.style.opacity = isMinimized ? "1" : "0";
+    bubble.style.visibility = isMinimized ? "visible" : "hidden";
+    bubble.style.transform = isMinimized
+      ? "translateY(-50%) scale(1)"
+      : "translateY(-50%) scale(0.3)";
+    bubble.style.transformOrigin = "center";
+    bubble.style.pointerEvents = isMinimized ? "auto" : "none";
+
+    bubble.innerHTML = `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255, 255, 255, 0.9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+      </svg>
+    `;
+
+    // Add hover effects
+    bubble.addEventListener("mouseenter", () => {
+      bubble.style.background = "rgba(255, 255, 255, 0.12)";
+      bubble.style.transform = "translateY(-50%) scale(1.1)";
+      bubble.style.boxShadow = "0 12px 48px rgba(0, 0, 0, 0.2)";
+    });
+
+    bubble.addEventListener("mouseleave", () => {
+      bubble.style.background = "rgba(255, 255, 255, 0.08)";
+      bubble.style.transform = "translateY(-50%) scale(1)";
+      bubble.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.12)";
+    });
+
+    // Click to expand
+    bubble.addEventListener("click", () => {
+      expandFloatingBox();
+    });
+
+    chatContainer.appendChild(bubble);
+  }
+
+  // Create the main floating box
+  function createMainFloatingBox(chatContainer) {
     const box = document.createElement("div");
     box.id = "msghelp-floating-box";
     box.style.position = "absolute";
@@ -91,18 +180,23 @@ function containsMedia(el) {
     box.style.lineHeight = "1.6";
 
     // Smooth fade-in (opacity) and subtle transform transitions
-    box.style.opacity = "0";
-    box.style.transition =
-      "opacity 0.6s cubic-bezier(0.4,0,0.2,1), transform 0.5s cubic-bezier(0.4,0,0.2,1)";
+    box.style.opacity = isMinimized ? "0" : "1";
+    box.style.visibility = isMinimized ? "hidden" : "visible";
+    box.style.transition = "all 0.6s cubic-bezier(0.4,0,0.2,1)";
     box.style.pointerEvents = "auto";
     box.style.willChange = "opacity, transform";
     box.style.overflow = "hidden";
+    box.style.transform = isMinimized
+      ? "translateX(-50%) translateY(-50px) scale(0.8)"
+      : "translateX(-50%) translateY(-20px) scale(1)";
 
     // Keep a gentle float animation, but remove gradient shifting
-    box.style.animationName = "msghelp-float";
-    box.style.animationDuration = "6s";
-    box.style.animationTimingFunction = "ease-in-out";
-    box.style.animationIterationCount = "infinite";
+    if (!isMinimized) {
+      box.style.animationName = "msghelp-float";
+      box.style.animationDuration = "6s";
+      box.style.animationTimingFunction = "ease-in-out";
+      box.style.animationIterationCount = "infinite";
+    }
 
     // Frosted blur with distortion using filter
     box.style.backdropFilter = "blur(40px) saturate(180%) brightness(1.1)";
@@ -130,14 +224,6 @@ function containsMedia(el) {
       "Segoe UI, Helvetica Neue, Helvetica, Lucida Grande, Arial, Ubuntu, Cantarell, Fira Sans, sans-serif";
     box.style.fontSize = "14.5px";
     box.style.lineHeight = "1.6";
-
-    // Smooth fade-in animation
-    box.style.opacity = "0";
-    box.style.transition =
-      "opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)";
-    box.style.pointerEvents = "auto";
-    box.style.willChange = "opacity, transform";
-    box.style.overflow = "hidden";
 
     // Inject CSS animations if not already present
     if (!document.getElementById("msghelp-animations")) {
@@ -192,11 +278,14 @@ function containsMedia(el) {
             <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
           </svg>
         </div>
-        <strong style="color: rgba(255, 255, 255, 0.95); font-weight: 600; font-size: 16px; flex: 1; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); letter-spacing: 0.3px;">Smart Reply</strong>
+        <strong style="color: rgba(255, 255, 255, 0.95); font-weight: 600; font-size: 16px; flex: 1; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); letter-spacing: 0.3px;">Reply GPT</strong>
         <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
           <button id="msghelp-manslater-btn" class="msghelp-manslater-btn" style="appearance:none;border:1px solid rgba(255,255,255,0.14);background:transparent;color:rgba(255,255,255,0.9);padding:6px 10px;border-radius:12px;font-size:12px;cursor:pointer;">Manslater: Off</button>
         </div>
-        <button id="msghelp-close" style="background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.2); cursor: pointer; padding: 6px; color: rgba(255, 255, 255, 0.8); font-size: 22px; line-height: 1; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 12px; backdrop-filter: blur(10px); font-weight: 300;" onmouseover="this.style.background='rgba(255, 255, 255, 0.25)'; this.style.borderColor='rgba(255, 255, 255, 0.4)'; this.style.color='rgba(255, 255, 255, 1)'; this.style.transform='rotate(90deg) scale(1.05)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.12)'; this.style.borderColor='rgba(255, 255, 255, 0.2)'; this.style.color='rgba(255, 255, 255, 0.8)'; this.style.transform='rotate(0deg) scale(1)';">×</button>
+        <div style="display: flex; gap: 4px;">
+          <button id="msghelp-minimize" style="background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.2); cursor: pointer; padding: 6px; color: rgba(255, 255, 255, 0.8); font-size: 16px; line-height: 1; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 12px; backdrop-filter: blur(10px); font-weight: 300;" title="Minimize">−</button>
+          <button id="msghelp-close" style="background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.2); cursor: pointer; padding: 6px; color: rgba(255, 255, 255, 0.8); font-size: 22px; line-height: 1; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 12px; backdrop-filter: blur(10px); font-weight: 300;" title="Close">×</button>
+        </div>
       </div>
       <div id="msghelp-suggestions-container">
         <div style="color: rgba(255, 255, 255, 0.6); font-style: italic; font-size: 14px; text-align: center; padding: 12px;">
@@ -224,13 +313,85 @@ function containsMedia(el) {
       </div>
     `;
 
+    // Add minimize button functionality (create if missing)
+    let minimizeBtn = box.querySelector("#msghelp-minimize");
+    if (!minimizeBtn) {
+      console.debug("[CONTENT] minimize button missing, creating fallback");
+      const header = box.firstElementChild || box;
+      minimizeBtn = document.createElement("button");
+      minimizeBtn.id = "msghelp-minimize";
+      minimizeBtn.title = "Minimize";
+      minimizeBtn.textContent = "−";
+      minimizeBtn.style.background = "rgba(255, 255, 255, 0.12)";
+      minimizeBtn.style.border = "1px solid rgba(255,255,255,0.2)";
+      minimizeBtn.style.cursor = "pointer";
+      minimizeBtn.style.padding = "6px";
+      minimizeBtn.style.color = "rgba(255,255,255,0.8)";
+      minimizeBtn.style.fontSize = "16px";
+      minimizeBtn.style.lineHeight = "1";
+      minimizeBtn.style.transition = "all 0.3s ease";
+      minimizeBtn.style.display = "flex";
+      minimizeBtn.style.alignItems = "center";
+      minimizeBtn.style.justifyContent = "center";
+      minimizeBtn.style.width = "32px";
+      minimizeBtn.style.height = "32px";
+      minimizeBtn.style.borderRadius = "12px";
+      minimizeBtn.style.backdropFilter = "blur(10px)";
+      minimizeBtn.style.fontWeight = "300";
+      // append to header actions container if present
+      try {
+        const actions =
+          header.querySelector &&
+          header.querySelector('div[style*="display: flex; gap:"]');
+        if (actions) actions.appendChild(minimizeBtn);
+        else header.appendChild(minimizeBtn);
+      } catch (e) {
+        header.appendChild(minimizeBtn);
+      }
+    }
+
+    minimizeBtn.addEventListener("mouseenter", () => {
+      minimizeBtn.style.background = "rgba(255, 255, 255, 0.25)";
+      minimizeBtn.style.borderColor = "rgba(255, 255, 255, 0.4)";
+      minimizeBtn.style.color = "rgba(255, 255, 255, 1)";
+      minimizeBtn.style.transform = "scale(1.05)";
+    });
+    minimizeBtn.addEventListener("mouseleave", () => {
+      minimizeBtn.style.background = "rgba(255, 255, 255, 0.12)";
+      minimizeBtn.style.borderColor = "rgba(255, 255, 255, 0.2)";
+      minimizeBtn.style.color = "rgba(255, 255, 255, 0.8)";
+      minimizeBtn.style.transform = "scale(1)";
+    });
+    minimizeBtn.addEventListener("click", () => {
+      minimizeFloatingBox();
+    });
+
     // Add close button functionality with animation
     const closeBtn = box.querySelector("#msghelp-close");
+    closeBtn.addEventListener("mouseenter", () => {
+      closeBtn.style.background = "rgba(255, 255, 255, 0.25)";
+      closeBtn.style.borderColor = "rgba(255, 255, 255, 0.4)";
+      closeBtn.style.color = "rgba(255, 255, 255, 1)";
+      closeBtn.style.transform = "rotate(90deg) scale(1.05)";
+    });
+    closeBtn.addEventListener("mouseleave", () => {
+      closeBtn.style.background = "rgba(255, 255, 255, 0.12)";
+      closeBtn.style.borderColor = "rgba(255, 255, 255, 0.2)";
+      closeBtn.style.color = "rgba(255, 255, 255, 0.8)";
+      closeBtn.style.transform = "rotate(0deg) scale(1)";
+    });
     closeBtn.addEventListener("click", () => {
       box.style.opacity = "0";
       box.style.transform = "translateX(-50%) translateY(-30px)";
+      const bubble = document.getElementById("msghelp-minimized-bubble");
+      if (bubble) {
+        bubble.style.opacity = "0";
+        bubble.style.visibility = "hidden";
+        bubble.style.transform = "translateY(-50%) scale(0.3)";
+      }
       setTimeout(() => {
         box.style.display = "none";
+        if (bubble) bubble.style.display = "none";
       }, 300);
     });
 
@@ -281,6 +442,118 @@ function containsMedia(el) {
       }
     } catch (e) {
       console.warn("[CONTENT] Failed to wire conversation UI", e);
+    }
+
+    // Show the box with initial animation if not minimized
+    if (!isMinimized) {
+      setTimeout(() => {
+        box.style.opacity = "1";
+        box.style.transform = "translateX(-50%) translateY(0)";
+      }, 50);
+    }
+  }
+
+  // Function to minimize the floating box
+  function minimizeFloatingBox() {
+    isMinimized = true;
+    const box = document.getElementById("msghelp-floating-box");
+    const bubble = document.getElementById("msghelp-minimized-bubble");
+
+    // Prepare bubble to show
+    if (bubble) {
+      bubble.style.display = "flex";
+      bubble.style.pointerEvents = "none"; // enable after animation
+      // force reflow to ensure transition starts
+      void bubble.offsetWidth;
+      bubble.style.opacity = "1";
+      bubble.style.visibility = "visible";
+      bubble.style.transform = "translateY(-50%) scale(1)";
+    }
+
+    if (box) {
+      // Stop float animation and animate out
+      box.style.animationName = "none";
+      box.style.pointerEvents = "none"; // prevent interaction during hide
+      // ensure transitions are set
+      box.style.transition =
+        "transform 420ms cubic-bezier(0.2,0.9,0.2,1), opacity 320ms cubic-bezier(0.2,0.9,0.2,1)";
+      // trigger transform/opacity change
+      box.style.opacity = "0";
+      box.style.transform = "translateX(-50%) translateY(-40px) scale(0.92)";
+
+      // After transition, hide fully
+      const onBoxTransitionEnd = (ev) => {
+        if (ev.propertyName !== "opacity" && ev.propertyName !== "transform")
+          return;
+        box.style.visibility = "hidden";
+        box.removeEventListener("transitionend", onBoxTransitionEnd);
+      };
+      box.addEventListener("transitionend", onBoxTransitionEnd);
+    }
+
+    if (bubble) {
+      // Make bubble interactive after its animation completes
+      const onBubbleEnd = (ev) => {
+        if (ev.propertyName !== "transform" && ev.propertyName !== "opacity")
+          return;
+        bubble.style.pointerEvents = "auto";
+        bubble.removeEventListener("transitionend", onBubbleEnd);
+      };
+      bubble.addEventListener("transitionend", onBubbleEnd);
+    }
+    // Persist minimized state
+    try {
+      chrome.storage.local.set({ msghelpIsMinimized: true });
+    } catch (e) {
+      console.warn("[CONTENT] Failed to persist minimized state", e);
+    }
+  }
+
+  // Function to expand the floating box from minimized state
+  function expandFloatingBox() {
+    isMinimized = false;
+    const box = document.getElementById("msghelp-floating-box");
+    const bubble = document.getElementById("msghelp-minimized-bubble");
+
+    if (bubble) {
+      // hide bubble with smooth transition and disable pointer events immediately
+      bubble.style.pointerEvents = "none";
+      bubble.style.opacity = "0";
+      bubble.style.transform = "translateY(-50%) scale(0.3)";
+      bubble.style.visibility = "hidden";
+      // ensure it's removed from layout after transition
+      const onBubbleHide = (ev) => {
+        if (ev.propertyName !== "opacity" && ev.propertyName !== "transform")
+          return;
+        bubble.style.display = "none";
+        bubble.removeEventListener("transitionend", onBubbleHide);
+      };
+      bubble.addEventListener("transitionend", onBubbleHide);
+    }
+
+    if (box) {
+      // Make box visible and interactive before animating
+      box.style.display = "block";
+      box.style.visibility = "visible";
+      box.style.pointerEvents = "auto";
+      // force reflow
+      void box.offsetWidth;
+      box.style.transition =
+        "transform 420ms cubic-bezier(0.2,0.9,0.2,1), opacity 320ms cubic-bezier(0.2,0.9,0.2,1)";
+      box.style.opacity = "1";
+      box.style.transform = "translateX(-50%) translateY(-20px) scale(1)";
+      // resume float after a small delay so the entrance feels natural
+      setTimeout(() => {
+        try {
+          box.style.animationName = "msghelp-float";
+        } catch (e) {}
+      }, 560);
+    }
+    // Persist expanded state
+    try {
+      chrome.storage.local.set({ msghelpIsMinimized: false });
+    } catch (e) {
+      console.warn("[CONTENT] Failed to persist minimized state (expand)", e);
     }
 
     // Inject conversation CSS rules for bubbles and scrollbars (once)
@@ -466,7 +739,7 @@ function containsMedia(el) {
              background: rgba(255, 255, 255, 0.1); 
              border-radius: 18px; 
              cursor: pointer; 
-             transition: all 0.3s ease; 
+             transition: transform 200ms ease, box-shadow 200ms ease, background 200ms ease; 
              border: 1px solid rgba(255, 255, 255, 0.18); 
              font-size: 14.5px; 
              color: rgba(255, 255, 255, 0.95); 
@@ -479,18 +752,6 @@ function containsMedia(el) {
              animation: msghelp-suggestion-fadein 0.5s ease ${
                index * 0.1
              }s backwards;
-           "
-           onmouseover="
-             this.style.background='rgba(255, 255, 255, 0.18)'; 
-             this.style.borderColor='rgba(255, 255, 255, 0.3)'; 
-             this.style.transform='translateX(4px)'; 
-             this.style.boxShadow='0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
-           " 
-           onmouseout="
-             this.style.background='rgba(255, 255, 255, 0.1)'; 
-             this.style.borderColor='rgba(255, 255, 255, 0.18)'; 
-             this.style.transform='translateX(0)'; 
-             this.style.boxShadow='0 2px 8px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
            ">
         <div style="display: flex; align-items: center; gap: 10px;">
           <div style="width: 20px; height: 20px; border-radius: 8px; background: rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(255, 255, 255, 0.25);">
@@ -531,6 +792,26 @@ function containsMedia(el) {
 
     // Add click handlers to suggestions
     container.querySelectorAll(".msghelp-suggestion").forEach((item) => {
+      // Add hover handlers via JS (avoid inline handlers to satisfy CSP)
+      item.addEventListener("mouseenter", () => {
+        try {
+          item.style.background = "rgba(255, 255, 255, 0.18)";
+          item.style.borderColor = "rgba(255, 255, 255, 0.3)";
+          item.style.transform = "translateX(4px)";
+          item.style.boxShadow =
+            "0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.3)";
+        } catch (e) {}
+      });
+      item.addEventListener("mouseleave", () => {
+        try {
+          item.style.background = "rgba(255, 255, 255, 0.1)";
+          item.style.borderColor = "rgba(255, 255, 255, 0.18)";
+          item.style.transform = "translateX(0)";
+          item.style.boxShadow =
+            "0 2px 8px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.2)";
+        } catch (e) {}
+      });
+
       item.addEventListener("click", () => {
         const suggestionText = item.dataset.text;
         // Try to paste into WhatsApp input; fallback to clipboard if not possible
@@ -856,6 +1137,16 @@ function containsMedia(el) {
       isInitialized = false;
       existingMessages.clear();
       recent.length = 0;
+
+      // Re-inject floating UI so minimized state persists across session changes
+      try {
+        injectFloatingBox();
+      } catch (e) {
+        console.warn(
+          "[CONTENT] injectFloatingBox failed during chat change",
+          e
+        );
+      }
 
       // Clear any pending context loading
       if (contextLoadingTimeout) {
@@ -1205,6 +1496,12 @@ function containsMedia(el) {
   // Request suggestion from popup/backend
   function requestSuggestion() {
     try {
+      // Don't fetch suggestions when minimized
+      if (isMinimized) {
+        console.log("[CONTENT] Skipping suggestion request - box is minimized");
+        return;
+      }
+
       // Ensure floating box exists and show loading animation
       let box = document.getElementById("msghelp-floating-box");
       if (!box) {
@@ -1228,8 +1525,11 @@ function containsMedia(el) {
             document.head.appendChild(style);
           }
         }
-        // Show the box with animation if hidden
-        if (box.style.display === "none" || box.style.opacity === "0") {
+        // Show the box with animation if hidden (but not if minimized)
+        if (
+          !isMinimized &&
+          (box.style.display === "none" || box.style.opacity === "0")
+        ) {
           box.style.display = "block";
           setTimeout(() => {
             box.style.opacity = "1";
@@ -1426,6 +1726,16 @@ function containsMedia(el) {
       // Clear any pending context loading
       if (contextLoadingTimeout) {
         clearTimeout(contextLoadingTimeout);
+      }
+
+      // Re-inject floating UI so minimized state persists across session changes
+      try {
+        injectFloatingBox();
+      } catch (e) {
+        console.warn(
+          "[CONTENT] injectFloatingBox failed during chat change",
+          e
+        );
       }
 
       // Load context after chat fully loads (give time for messages to render)
