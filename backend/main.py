@@ -8,7 +8,6 @@ import uuid
 from datetime import datetime, timedelta
 import hashlib
 import json
-from dotenv import load_dotenv
 
 # LangGraph imports
 from langgraph.graph import StateGraph, END
@@ -25,11 +24,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-load_dotenv(dotenv_path=".env")
-
-api_key = os.getenv("TOGETHER_API_KEY")
-client = Together(api_key=api_key)
-FINE_TUNED_MODEL = os.getenv("FINE_TUNED_MODEL")
+# Initialize Together AI
+client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
+FINE_TUNED_MODEL = os.getenv("FINE_TUNED_MODEL_ID", "your-fine-tuned-model-id")
 
 # In-memory storage (use Redis in production)
 sessions = {}
@@ -73,6 +70,19 @@ class SuggestReplyRequest(BaseModel):
 class SuggestReplyResponse(BaseModel):
     suggestion: str
     session_id: str
+    cached: bool = False
+
+
+class GeneralReplyRequest(BaseModel):
+    current_message: CurrentMessage
+    context_messages: List[ContextMessage]  # Last 4 messages
+    session_id: Optional[str] = None
+
+
+class GeneralReplyResponse(BaseModel):
+    suggestion: str
+    session_id: str
+    model_used: str
     cached: bool = False
 
 
@@ -308,6 +318,240 @@ async def suggest_reply(request: SuggestReplyRequest, background_tasks: Backgrou
         )
 
 
+@app.post("/suggest-reply-general", response_model=GeneralReplyResponse)
+async def suggest_reply_general(request: GeneralReplyRequest, background_tasks: BackgroundTasks):
+    """
+    Generate reply suggestion using a GENERAL LLM (not fine-tuned).
+    Same format as /suggest-reply but uses general model like Llama 3.1.
+    
+    Flow:
+    1. Receives current incoming message + last 4 messages as context
+    2. Builds conversation history
+    3. Calls GENERAL LLM to generate appropriate reply
+    4. Returns suggested reply text
+    """
+    
+    # Use general model
+    GENERAL_MODEL = os.getenv("GENERAL_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo")
+    
+    # Validate context window
+    if len(request.context_messages) > CONFIG["CONTEXT_WINDOW"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Context messages exceed maximum of {CONFIG['CONTEXT_WINDOW']}"
+        )
+    
+    # Get or create session
+    session_id = request.session_id or str(uuid.uuid4())
+    session_state = get_session(session_id)
+    
+    # Check cache (separate cache key for general model)
+    cache_key = f"general_{get_cache_key(request.current_message.text, [m.dict() for m in request.context_messages])}"
+    
+    cached_suggestion = get_from_cache(cache_key)
+    if cached_suggestion:
+        print(f"[CACHE HIT] General model for session {session_id}")
+        return GeneralReplyResponse(
+            suggestion=cached_suggestion,
+            session_id=session_id,
+            model_used=GENERAL_MODEL,
+            cached=True
+        )
+    
+    print(f"[PROCESSING] General model with {len(request.context_messages)} context messages")
+    
+    try:
+        # Build conversation history: context messages + current message
+        conversation = []
+        
+        # Add context messages (oldest to newest)
+        for msg in reversed(request.context_messages):
+            role = "assistant" if msg.type == "outgoing" else "user"
+            conversation.append({
+                "role": role,
+                "content": msg.text
+            })
+        
+        # Add current message (the one we need to reply to)
+        conversation.append({
+            "role": "user",
+            "content": request.current_message.text
+        })
+        
+        # Add system prompt
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant that suggests appropriate replies to messages. Provide a natural, contextual response."
+            }
+        ] + conversation
+        
+        # Call general LLM
+        response = client.chat.completions.create(
+            model=GENERAL_MODEL,
+            messages=messages,
+            max_tokens=CONFIG["MAX_TOKENS"],
+            temperature=0.7,
+            top_p=0.9,
+        )
+        
+        reply_suggestion = response.choices[0].message.content.strip()
+        
+        # Cache the result
+        background_tasks.add_task(set_cache, cache_key, reply_suggestion)
+        
+        # Update session
+        state_data = {
+            "current_message": request.current_message.dict(),
+            "context_messages": [m.dict() for m in request.context_messages],
+            "reply_suggestion": reply_suggestion
+        }
+        
+        if session_state:
+            session_state["state"] = state_data
+        else:
+            session_state = {"state": state_data}
+        
+        background_tasks.add_task(save_session, session_id, session_state)
+        
+        print(f"[SUCCESS] Generated reply using general model for session {session_id}")
+        
+        return GeneralReplyResponse(
+            suggestion=reply_suggestion,
+            session_id=session_id,
+            model_used=GENERAL_MODEL,
+            cached=False
+        )
+        
+    except Exception as e:
+        print(f"[ERROR] {str(e)}")
+        
+        # Handle rate limits
+        if "rate limit" in str(e).lower():
+            raise HTTPException(
+                status_code=429,
+                detail="Too many requests. Please try again in a moment."
+            )
+        
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate reply: {str(e)}"
+        )
+
+
+@app.post("/chat", response_model=GeneralChatResponse)
+async def general_chat(request: GeneralChatRequest):
+    """
+    General LLM inference endpoint - not tied to reply suggestions.
+    Can be used for any conversational AI task.
+    
+    Features:
+    - Use default model or specify custom model
+    - Maintain conversation history
+    - Adjust temperature and max_tokens
+    - General purpose chat completion
+    """
+    
+    # Use specified model or default to a general LLM (not fine-tuned)
+    model = request.model or os.getenv("GENERAL_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo")
+    
+    print(f"[CHAT] Processing with model: {model}")
+    
+    try:
+        # Build messages array
+        messages = []
+        
+        # Add conversation history if provided
+        if request.conversation_history:
+            messages.extend(request.conversation_history)
+        
+        # Add current user message
+        messages.append({
+            "role": "user",
+            "content": request.message
+        })
+        
+        # Call Together AI
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+        )
+        
+        ai_response = response.choices[0].message.content.strip()
+        tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else None
+        
+        print(f"[CHAT] Response generated successfully")
+        
+        return GeneralChatResponse(
+            response=ai_response,
+            model_used=model,
+            tokens_used=tokens_used
+        )
+        
+    except Exception as e:
+        print(f"[CHAT ERROR] {str(e)}")
+        
+        # Handle rate limits
+        if "rate limit" in str(e).lower():
+            raise HTTPException(
+                status_code=429,
+                detail="Too many requests. Please try again in a moment."
+            )
+        
+        raise HTTPException(
+            status_code=500,
+            detail=f"Chat completion failed: {str(e)}"
+        )
+
+
+@app.post("/chat/stream")
+async def general_chat_stream(request: GeneralChatRequest):
+    """
+    Streaming version of general chat endpoint.
+    Returns response as Server-Sent Events (SSE).
+    """
+    from fastapi.responses import StreamingResponse
+    import asyncio
+    
+    model = request.model or os.getenv("GENERAL_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo")
+    
+    async def generate():
+        try:
+            messages = []
+            
+            if request.conversation_history:
+                messages.extend(request.conversation_history)
+            
+            messages.append({
+                "role": "user",
+                "content": request.message
+            })
+            
+            # Stream response
+            stream = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+                stream=True
+            )
+            
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    yield f"data: {json.dumps({'content': content})}\n\n"
+                    await asyncio.sleep(0)  # Allow other tasks to run
+            
+            yield f"data: {json.dumps({'done': True})}\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
 @app.delete("/session/{session_id}")
 async def clear_session(session_id: str):
     """Clear session data"""
@@ -348,20 +592,40 @@ async def health():
 @app.get("/")
 async def root():
     return {
-        "message": "Reply Suggestion API with Context Window",
+        "message": "Reply Suggestion API with Context Window + General Chat",
         "model": FINE_TUNED_MODEL,
         "context_window": CONFIG["CONTEXT_WINDOW"],
+        "endpoints": {
+            "/suggest-reply": {
+                "method": "POST",
+                "description": "Get reply suggestions with fine-tuned model",
+                "model": "Fine-tuned model",
+                "features": ["Context-aware", "Caching", "Session management"]
+            },
+            "/suggest-reply-general": {
+                "method": "POST",
+                "description": "Get reply suggestions with general LLM (Llama 3.1)",
+                "model": "General LLM",
+                "features": ["Same format as suggest-reply", "Uses general model instead"]
+            },
+            "/chat": {
+                "method": "POST",
+                "description": "General LLM inference for any conversation",
+                "features": ["Multi-model support", "Conversation history", "Adjustable parameters"]
+            },
+            "/chat/stream": {
+                "method": "POST",
+                "description": "Streaming chat responses (SSE)",
+                "features": ["Real-time streaming", "Token-by-token output"]
+            }
+        },
         "features": [
             "Context-aware reply suggestions",
-            "4-message context window",
+            "General purpose chat",
             "Response caching",
-            "Session management"
-        ],
-        "usage": {
-            "endpoint": "/suggest-reply",
-            "method": "POST",
-            "description": "Send current message + last 4 messages to get reply suggestion"
-        }
+            "Session management",
+            "Streaming support"
+        ]
     }
 
 
