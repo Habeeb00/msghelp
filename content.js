@@ -204,6 +204,24 @@ function containsMedia(el) {
           Waiting for suggestions...
         </div>
       </div>
+      <!-- Continue conversation footer -->
+      <div id="msghelp-conversation-footer" style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
+        <div style="display:flex; justify-content:center;">
+          <button id="msghelp-continue-btn" style="appearance:none;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.95);padding:6px 10px;border-radius:10px;font-size:13px;cursor:pointer;">Continue conversation</button>
+        </div>
+        <div id="msghelp-conversation-area" style="display:none; flex-direction:column; gap:8px; width:100%;">
+            <div id="msghelp-convo-log" style="max-height:180px; overflow:auto; padding:10px; border-radius:10px; background: rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.03); display:flex; flex-direction:column; gap:6px;">
+              <!-- conversation messages will be appended here -->
+            </div>
+            <div style="display:flex; gap:8px; align-items:flex-end; width:100%;">
+              <textarea id="msghelp-convo-input" placeholder="Type your follow-up question..." style="flex:1; min-height:48px; max-height:140px; resize:vertical; padding:10px 12px; border-radius:10px; background: rgba(0,0,0,0.18); color: #fff; border:1px solid rgba(255,255,255,0.06); font-size:13px;"></textarea>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <button id="msghelp-convo-send" style="appearance:none;border:1px solid rgba(37,211,102,0.18);background:#25d366;color:#012; padding:8px 12px;border-radius:10px; font-weight:600; cursor:pointer;">Send</button>
+                <button id="msghelp-convo-close" style="appearance:none;border:1px solid rgba(255,255,255,0.08);background:transparent;color:rgba(255,255,255,0.7); padding:6px 8px;border-radius:8px; font-size:12px; cursor:pointer;">Close</button>
+              </div>
+            </div>
+          </div>
+      </div>
     `;
 
     // Add close button functionality with animation
@@ -217,6 +235,71 @@ function containsMedia(el) {
     });
 
     chatContainer.appendChild(box);
+    // Conversation UI wiring (safe guards)
+    try {
+      const continueBtn = box.querySelector("#msghelp-continue-btn");
+      const convoArea = box.querySelector("#msghelp-conversation-area");
+      const convoLog = box.querySelector("#msghelp-convo-log");
+      const convoInput = box.querySelector("#msghelp-convo-input");
+      const convoSend = box.querySelector("#msghelp-convo-send");
+      const convoClose = box.querySelector("#msghelp-convo-close");
+
+      if (continueBtn && convoArea) {
+        continueBtn.addEventListener("click", () => {
+          const opening = convoArea.style.display === "none";
+          convoArea.style.display = opening ? "flex" : "none";
+          // Hide suggestions container while in conversation mode
+          try {
+            const boxEl = document.getElementById("msghelp-floating-box");
+            const containerEl =
+              boxEl && boxEl.querySelector("#msghelp-suggestions-container");
+            if (containerEl)
+              containerEl.style.display = opening ? "none" : "block";
+          } catch (e) {}
+
+          if (opening) {
+            setTimeout(() => convoInput?.focus(), 30);
+          }
+        });
+      }
+
+      if (convoClose) {
+        convoClose.addEventListener("click", () => {
+          if (convoArea) convoArea.style.display = "none";
+        });
+      }
+
+      if (convoSend && convoInput) {
+        convoSend.addEventListener("click", () => {
+          const text = convoInput.value && convoInput.value.trim();
+          if (!text) return;
+          appendToConvo("user", text, convoLog);
+          convoInput.value = "";
+          // Send follow-up as a quick request to background
+          sendInlineFollowup(text, convoLog);
+        });
+      }
+    } catch (e) {
+      console.warn("[CONTENT] Failed to wire conversation UI", e);
+    }
+
+    // Inject conversation CSS rules for bubbles and scrollbars (once)
+    if (!document.getElementById("msghelp-convo-styles")) {
+      const cs = document.createElement("style");
+      cs.id = "msghelp-convo-styles";
+      cs.textContent = `
+        #msghelp-convo-log { font-size:13px; color: #fff; }
+        #msghelp-convo-log .msghelp-convo-entry { display:flex; width:100%; }
+        #msghelp-convo-log .msghelp-convo-bubble { padding:8px 10px; border-radius:10px; max-width:80%; word-wrap:break-word; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+        #msghelp-convo-log .msghelp-convo-user { margin-left:auto; background: rgba(37,211,102,0.12); color: #e9ffef; border:1px solid rgba(37,211,102,0.14); }
+        #msghelp-convo-log .msghelp-convo-assistant { margin-right:auto; background: rgba(255,255,255,0.03); color: #fff; border:1px solid rgba(255,255,255,0.03); }
+        #msghelp-convo-log::-webkit-scrollbar { height:8px; width:8px; }
+        #msghelp-convo-log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius:8px; }
+        #msghelp-convo-log::-webkit-scrollbar-track { background: transparent; }
+        #msghelp-convo-input { font-family: inherit; }
+      `;
+      document.head.appendChild(cs);
+    }
 
     // Inject manslater-specific CSS (pink theme) if not present
     if (!document.getElementById("msghelp-manslater-style")) {
@@ -329,6 +412,20 @@ function containsMedia(el) {
       console.log("[CONTENT] Suggestions container not found");
       return;
     }
+
+    // If convo area is visible, skip rendering suggestions (conversation-only mode)
+    try {
+      const convoArea = box.querySelector("#msghelp-conversation-area");
+      if (convoArea && convoArea.style.display !== "none") {
+        console.log(
+          "[CONTENT] In conversation mode — skipping suggestion render"
+        );
+        // ensure suggestions container is hidden while in convo mode
+        const c = box.querySelector("#msghelp-suggestions-container");
+        if (c) c.style.display = "none";
+        return;
+      }
+    } catch (e) {}
 
     // Show the box with animation if hidden
     if (box.style.display === "none" || box.style.opacity === "0") {
@@ -479,6 +576,84 @@ function containsMedia(el) {
     });
   }
 
+  // Append a message to the small conversation log inside the floating box
+  function appendToConvo(role, text, convoLogEl) {
+    try {
+      const log = convoLogEl || document.querySelector("#msghelp-convo-log");
+      if (!log) return;
+      const entry = document.createElement("div");
+      entry.className = "msghelp-convo-entry";
+      entry.style.margin = "6px 0";
+      entry.style.display = "flex";
+
+      const bubble = document.createElement("div");
+      bubble.className =
+        "msghelp-convo-bubble " +
+        (role === "user" ? "msghelp-convo-user" : "msghelp-convo-assistant");
+      bubble.textContent = text;
+
+      entry.appendChild(bubble);
+      log.appendChild(entry);
+      // Auto-scroll
+      log.scrollTop = log.scrollHeight;
+    } catch (e) {
+      console.warn("[CONTENT] appendToConvo error", e);
+    }
+  }
+
+  // Send a quick follow-up inline using the same REQUEST_SUGGESTION message shape
+  function sendInlineFollowup(text, convoLogEl) {
+    try {
+      // prepare a minimal message object similar to saved messages
+      const msgObj = {
+        text,
+        timestamp: Date.now(),
+        platform: "whatsapp",
+        type: "outgoing",
+        sessionId: currentChatSession || null,
+      };
+
+      // show spinner in suggestions area
+      const box = document.getElementById("msghelp-floating-box");
+      if (box) {
+        const container = box.querySelector("#msghelp-suggestions-container");
+        if (container)
+          container.innerHTML =
+            '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;">' +
+            '<span class="msghelp-spinner" style="display:inline-block;width:16px;height:16px;border:2px solid rgba(37, 211, 102, 0.3);border-top:2px solid #25d366;border-radius:50%;animation:msghelp-spin 0.8s linear infinite;"></span>' +
+            ' <span style="color:#8696a0;font-size:13.5px;">Thinking...</span></div>';
+      }
+
+      chrome.runtime.sendMessage(
+        {
+          type: "REQUEST_SUGGESTION",
+          messages: [msgObj],
+        },
+        (resp) => {
+          if (chrome.runtime.lastError) {
+            const errText = "No response from backend";
+            appendToConvo("assistant", errText, convoLogEl);
+            // also show in suggestions container
+            const b = document.getElementById("msghelp-floating-box");
+            if (b) {
+              const container = b.querySelector(
+                "#msghelp-suggestions-container"
+              );
+              if (container)
+                container.innerHTML = `<div style=\"color: rgba(255, 255, 255, 0.5); font-style: italic; font-size: 14px; text-align: center; padding: 12px;\">${escapeHtml(
+                  errText
+                )}</div>`;
+            }
+          } else {
+            // response will come via SHOW_SUGGESTIONS and be appended there
+          }
+        }
+      );
+    } catch (e) {
+      console.warn("[CONTENT] sendInlineFollowup error", e);
+    }
+  }
+
   // Copy text to clipboard
   function copyToClipboard(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -527,6 +702,7 @@ function containsMedia(el) {
       return "";
     }
   }
+
   function getActiveChatInfo() {
     const chatTitle = normalizeSpaces(String(getChatTitleByYourMethod() || ""));
     const hrefHash = (location.hash || "").replace(/^#/, "");
@@ -538,18 +714,12 @@ function containsMedia(el) {
 
   function getChatTitleByYourMethod() {
     try {
-      // Step 1: find the long participant preview span
       const preview = document.querySelector("#main header span[title]");
       if (!preview) return "";
-
-      // Step 2: climb to nearest wrapping div (header)
       const header = preview.closest("header") || preview.parentElement;
       if (!header) return "";
-
-      // Step 3: inside that header, find the real visible title
       const titleEl = header.querySelector("span[dir='auto']");
       if (!titleEl) return "";
-
       return normalizeSpaces(
         titleEl.getAttribute("title") || titleEl.innerText || ""
       );
@@ -923,13 +1093,20 @@ function containsMedia(el) {
   // Request suggestion from popup/backend
   function requestSuggestion() {
     try {
-      // Show loading animation in floating box
-      const box = document.getElementById("msghelp-floating-box");
+      // Ensure floating box exists and show loading animation
+      let box = document.getElementById("msghelp-floating-box");
+      if (!box) {
+        // try to inject immediately; injectFloatingBox will retry if the chat container isn't ready
+        injectFloatingBox();
+        box = document.getElementById("msghelp-floating-box");
+      }
       if (box) {
         const container = box.querySelector("#msghelp-suggestions-container");
         if (container) {
           container.innerHTML =
-            '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;"><span class="msghelp-spinner" style="display:inline-block;width:16px;height:16px;border:2px solid rgba(37, 211, 102, 0.3);border-top:2px solid #25d366;border-radius:50%;animation:msghelp-spin 0.8s linear infinite;"></span> <span style="color:#8696a0;font-size:13.5px;">Generating reply...</span></div>';
+            '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;">' +
+            '<span class="msghelp-spinner" style="display:inline-block;width:16px;height:16px;border:2px solid rgba(37, 211, 102, 0.3);border-top:2px solid #25d366;border-radius:50%;animation:msghelp-spin 0.8s linear infinite;"></span>' +
+            ' <span style="color:#8696a0;font-size:13.5px;">Generating reply...</span></div>';
           // Add spinner animation style if not present
           if (!document.getElementById("msghelp-spinner-style")) {
             const style = document.createElement("style");
@@ -952,10 +1129,26 @@ function containsMedia(el) {
         if (messages.length === 0) return;
 
         // Send request to background or popup for suggestion
-        chrome.runtime.sendMessage({
-          type: "REQUEST_SUGGESTION",
-          messages: messages.slice(0, 5),
-        });
+        chrome.runtime.sendMessage(
+          {
+            type: "REQUEST_SUGGESTION",
+            messages: messages.slice(0, 5),
+          },
+          (resp) => {
+            // If background didn't respond (e.g. error), ensure box shows 'No suggestions'
+            if (chrome.runtime.lastError) {
+              const b = document.getElementById("msghelp-floating-box");
+              if (b) {
+                const container = b.querySelector(
+                  "#msghelp-suggestions-container"
+                );
+                if (container)
+                  container.innerHTML =
+                    '<div style="color: rgba(255, 255, 255, 0.5); font-style: italic; font-size: 14px; text-align: center; padding: 12px;">No suggestions available</div>';
+              }
+            }
+          }
+        );
       });
     } catch (e) {
       console.log("[CONTENT] Could not request suggestion:", e);
@@ -1271,6 +1464,22 @@ function containsMedia(el) {
         request.suggestions
       );
       updateFloatingSuggestions(request.suggestions);
+      // If conversation area is visible, append the model replies there as well
+      try {
+        const convo = document.getElementById("msghelp-conversation-area");
+        const convoLog = document.getElementById("msghelp-convo-log");
+        if (convo && convo.style.display !== "none" && convoLog) {
+          if (request.error) {
+            appendToConvo("assistant", String(request.error), convoLog);
+          } else if (request.suggestions && request.suggestions.length > 0) {
+            request.suggestions.forEach((s) =>
+              appendToConvo("assistant", s, convoLog)
+            );
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
       sendResponse({ ok: true });
       return;
     }

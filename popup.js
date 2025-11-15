@@ -1,5 +1,6 @@
 // Popup script - upgraded to support tabs (History / Debug / Config)
-const API_ENDPOINT = "https://msghelp.onrender.com/suggest-reply"; // Replace with your backend API endpoint
+const API_ENDPOINT = "https://msghelp.onrender.com/suggest-reply";
+// Replace with your backend API endpoint
 
 // Elements (some may be absent depending on page)
 const toggle = document.getElementById("toggle");
@@ -55,6 +56,11 @@ function formatTime(ts) {
 function escapeHtml(s) {
   if (!s) return "";
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Small helper to read chrome.storage with Promise syntax
+function getStorage(keys) {
+  return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
 }
 
 function renderMessages() {
@@ -182,8 +188,13 @@ if (suggestReplyBtn) {
       };
 
       console.log("[POPUP] Sending payload to backend:", payload);
+      // Choose endpoint based on manslaterMode stored by content script toggle
+      const { manslaterMode = false } = await getStorage(["manslaterMode"]);
+      const endpoint = manslaterMode
+        ? "https://msghelp.onrender.com/suggest-reply"
+        : "https://example.com/sample-suggest";
 
-      const response = await fetch(API_ENDPOINT, {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

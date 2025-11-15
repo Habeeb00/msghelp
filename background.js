@@ -36,7 +36,16 @@ async function handleSuggestionRequest(messages, tabId) {
       currentMessage.text.substring(0, 50) + "..."
     );
 
-    const response = await fetch(API_ENDPOINT, {
+    // Read manslaterMode from storage to decide which endpoint to call
+    const storage = await new Promise((res) =>
+      chrome.storage.local.get(["manslaterMode"], res)
+    );
+    const manslaterMode = storage.manslaterMode === true;
+    const endpoint = manslaterMode
+      ? API_ENDPOINT
+      : "https://example.com/sample-suggest";
+
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -45,11 +54,14 @@ async function handleSuggestionRequest(messages, tabId) {
     });
 
     if (!response.ok) {
-      console.error(
-        "[BACKGROUND] Backend error:",
-        response.status,
-        response.statusText
-      );
+      const errMsg = `Backend error: ${response.status} ${response.statusText}`;
+      console.error("[BACKGROUND]", errMsg);
+      // Send an error message to content script so it can display it
+      chrome.tabs.sendMessage(tabId, {
+        type: "SHOW_SUGGESTIONS",
+        suggestions: [],
+        error: errMsg,
+      });
       return;
     }
 
@@ -63,5 +75,17 @@ async function handleSuggestionRequest(messages, tabId) {
     });
   } catch (error) {
     console.error("[BACKGROUND] Error getting suggestion:", error);
+    const errMsg =
+      error && error.message ? `Error: ${error.message}` : "Unknown error";
+    // On error, notify the content script so it can present the error message
+    try {
+      chrome.tabs.sendMessage(tabId, {
+        type: "SHOW_SUGGESTIONS",
+        suggestions: [],
+        error: errMsg,
+      });
+    } catch (e) {
+      // ignore
+    }
   }
 }
