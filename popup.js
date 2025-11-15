@@ -10,6 +10,7 @@ const exportBtn = document.getElementById("exportBtn");
 const scanBtn = document.getElementById("scanBtn");
 const resetBtn = document.getElementById("resetBtn");
 const debugBtn = document.getElementById("debugBtn");
+const testFloatingBtn = document.getElementById("testFloatingBtn");
 const suggestReplyBtn = document.getElementById("suggestReplyBtn");
 const contextInfo = document.getElementById("contextInfo");
 const contextCount = document.getElementById("contextCount");
@@ -150,19 +151,19 @@ if (suggestReplyBtn) {
       // The most recent message is the current message
       const currentMessage = messages[0];
       // The next 4 messages are context messages
-      const contextMessages = messages.slice(1, 5).map(msg => ({
+      const contextMessages = messages.slice(1, 5).map((msg) => ({
         text: msg.text,
         type: msg.type,
-        timestamp: msg.timestamp
+        timestamp: msg.timestamp,
       }));
 
       const payload = {
         current_message: {
           text: currentMessage.text,
           platform: currentMessage.platform,
-          timestamp: currentMessage.timestamp
+          timestamp: currentMessage.timestamp,
         },
-        context_messages: contextMessages
+        context_messages: contextMessages,
       };
 
       console.log("[POPUP] Sending payload to backend:", payload);
@@ -177,14 +178,32 @@ if (suggestReplyBtn) {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(`Backend error: ${response.status} - ${errorData.detail || response.statusText}`);
+        throw new Error(
+          `Backend error: ${response.status} - ${
+            errorData.detail || response.statusText
+          }`
+        );
       }
 
       const data = await response.json();
       selftestResult.textContent = `Suggestion: "${data.suggestion}" (Cached: ${data.cached})`;
       console.log("[POPUP] Reply suggestion:", data.suggestion);
-      setTimeout(() => (selftestResult.textContent = ""), 5000); // Display suggestion for 5 seconds
 
+      // Send suggestions to content script to display in floating box
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (
+          tabs[0] &&
+          tabs[0].url &&
+          tabs[0].url.includes("web.whatsapp.com")
+        ) {
+          chrome.tabs.sendMessage(tabs[0].id, {
+            type: "SHOW_SUGGESTIONS",
+            suggestions: [data.suggestion], // Convert single suggestion to array
+          });
+        }
+      });
+
+      setTimeout(() => (selftestResult.textContent = ""), 5000); // Display suggestion for 5 seconds
     } catch (e) {
       console.error("[POPUP] Error suggesting reply:", e);
       selftestResult.textContent = `Error: ${e.message}`;
@@ -300,6 +319,35 @@ Total Messages in Storage: ${response.storageCount}`;
           }
         }
       );
+    }
+  });
+});
+
+// Test floating box functionality
+testFloatingBtn.addEventListener("click", () => {
+  console.log("Test Floating Button clicked");
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0] && tabs[0].url && tabs[0].url.includes("web.whatsapp.com")) {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "TEST_FLOATING_BOX" });
+      selftestResult.textContent = "Test floating box sent";
+      setTimeout(() => (selftestResult.textContent = ""), 2000);
+    } else {
+      selftestResult.textContent = "Please open WhatsApp Web first";
+      setTimeout(() => (selftestResult.textContent = ""), 3000);
+    }
+  });
+});
+
+// Suggest reply button handler
+suggestReplyBtn.addEventListener("click", () => {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0] && tabs[0].url && tabs[0].url.includes("web.whatsapp.com")) {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "SHOW_SUGGESTIONS" });
+      selftestResult.textContent = "Suggestion request sent";
+      setTimeout(() => (selftestResult.textContent = ""), 2000);
+    } else {
+      selftestResult.textContent = "Please open WhatsApp Web first";
+      setTimeout(() => (selftestResult.textContent = ""), 3000);
     }
   });
 });

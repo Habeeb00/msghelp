@@ -37,6 +37,146 @@ function containsMedia(el) {
   // Track which sessions have already had their context saved
   const sessionsWithContext = new Set();
 
+  // Escape HTML for safe display
+  function escapeHtml(s) {
+    if (!s) return "";
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // Floating UI for suggestions
+  function injectFloatingBox() {
+    // Remove existing box if it exists
+    const existingBox = document.getElementById("msghelp-floating-box");
+    if (existingBox) {
+      existingBox.remove();
+    }
+
+    const box = document.createElement("div");
+    box.id = "msghelp-floating-box";
+    box.style.position = "fixed";
+    box.style.bottom = "24px";
+    box.style.right = "24px";
+    box.style.zIndex = "99999";
+    box.style.background = "#fff";
+    box.style.border = "1px solid #25d366";
+    box.style.color = "#000";
+    box.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+    box.style.padding = "16px";
+    box.style.minWidth = "280px";
+    box.style.maxWidth = "350px";
+    box.style.fontFamily =
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    box.style.fontSize = "14px";
+    box.style.lineHeight = "1.4";
+    box.style.display = "block"; // Always visible by default
+
+    box.innerHTML = `
+      <div style="display: flex; align-items: center; margin-bottom: 12px;">
+        <div style="width: 12px; height: 12px; background: #25d366; border-radius: 50%; margin-right: 8px;"></div>
+        <strong style="color: #25d366;">Message Helper</strong>
+        <button id="msghelp-close" style="margin-left: auto; background: none; border: none; font-size: 16px; cursor: pointer; padding: 0; color: #666;">×</button>
+      </div>
+      <div id="msghelp-suggestions-container">
+        <div style="color: #666; font-style: italic;">Waiting for suggestions...</div>
+      </div>
+    `;
+
+    // Add close button functionality
+    const closeBtn = box.querySelector("#msghelp-close");
+    closeBtn.addEventListener("click", () => {
+      box.style.display = "none";
+    });
+
+    document.body.appendChild(box);
+    console.log("[CONTENT] Floating box injected successfully");
+  }
+
+  // Update suggestions in floating box
+  function updateFloatingSuggestions(suggestions) {
+    console.log(
+      "[CONTENT] updateFloatingSuggestions called with:",
+      suggestions
+    );
+    const box = document.getElementById("msghelp-floating-box");
+    if (!box) {
+      console.log("[CONTENT] Floating box not found, injecting...");
+      injectFloatingBox();
+      return updateFloatingSuggestions(suggestions); // Retry after injection
+    }
+
+    const container = box.querySelector("#msghelp-suggestions-container");
+    if (!container) {
+      console.log("[CONTENT] Suggestions container not found");
+      return;
+    }
+
+    if (!suggestions || suggestions.length === 0) {
+      container.innerHTML =
+        '<div style="color: #666; font-style: italic;">No suggestions available</div>';
+      // Keep the box visible even if no suggestions
+      console.log("[CONTENT] No suggestions to display");
+      return;
+    }
+
+    console.log(
+      "[CONTENT] Creating suggestions list with",
+      suggestions.length,
+      "items"
+    );
+    // Create suggestion list
+    const suggestionsList = suggestions
+      .map(
+        (suggestion, index) => `
+      <div class="msghelp-suggestion" data-text="${escapeHtml(suggestion)}" 
+           style="padding: 8px 12px; margin: 4px 0; background: #f0f0f0; border-radius: 8px; cursor: pointer; transition: background-color 0.2s;"
+           onmouseover="this.style.backgroundColor='#e0e0e0'" 
+           onmouseout="this.style.backgroundColor='#f0f0f0'">
+        ${escapeHtml(suggestion)}
+      </div>
+    `
+      )
+      .join("");
+
+    container.innerHTML = suggestionsList;
+    box.style.display = "block";
+    console.log("[CONTENT] Floating box updated and shown");
+
+    // Add click handlers to suggestions
+    container.querySelectorAll(".msghelp-suggestion").forEach((item) => {
+      item.addEventListener("click", () => {
+        const suggestionText = item.dataset.text;
+        copyToClipboard(suggestionText);
+
+        // Show feedback
+        item.style.backgroundColor = "#25d366";
+        item.style.color = "white";
+        item.innerHTML = "✓ Copied to clipboard!";
+
+        setTimeout(() => {
+          // Keep the box visible after copying
+        }, 1500);
+      });
+    });
+  }
+
+  // Copy text to clipboard
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text);
+    } else {
+      // Fallback for older browsers
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+  }
+
+  // Inject floating box when content script loads
+  setTimeout(injectFloatingBox, 1000);
+
   function seen(key) {
     return recent.indexOf(key) !== -1;
   }
@@ -128,6 +268,8 @@ function containsMedia(el) {
           setTimeout(() => {
             isInitialized = true;
             console.log("[CONTENT] 🔄 Now capturing new messages only");
+            // Request a suggestion after context is loaded
+            requestSuggestion();
           }, 1000);
         }, 1500); // Wait for chat to fully load
       } else {
@@ -137,6 +279,8 @@ function containsMedia(el) {
           console.log(
             "[CONTENT] 🔄 Now capturing new messages only (context already loaded)"
           );
+          // Request a suggestion after context is loaded
+          requestSuggestion();
         }, 500);
       }
     }
@@ -447,6 +591,30 @@ function containsMedia(el) {
       replyInfo ? `(reply to: ${replyInfo.replyTo.text})` : ""
     );
     saveMessage(msgObj);
+
+    // Auto-suggest replies for incoming messages
+    if (guessDirection(container) === "incoming") {
+      setTimeout(() => {
+        requestSuggestion();
+      }, 1000); // Small delay to let the message be saved
+    }
+  }
+
+  // Request suggestion from popup/backend
+  function requestSuggestion() {
+    try {
+      chrome.storage.local.get(["messages"], ({ messages = [] }) => {
+        if (messages.length === 0) return;
+
+        // Send request to background or popup for suggestion
+        chrome.runtime.sendMessage({
+          type: "REQUEST_SUGGESTION",
+          messages: messages.slice(0, 5),
+        });
+      });
+    } catch (e) {
+      console.log("[CONTENT] Could not request suggestion:", e);
+    }
   }
 
   // Check if element is currently visible in viewport
@@ -744,6 +912,29 @@ function containsMedia(el) {
     if (request.type === "SCAN_NOW") {
       // Force re-scan of current chat
       scanLast5Messages(true);
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (request.type === "SHOW_SUGGESTIONS") {
+      // Update floating box with suggestions
+      console.log(
+        "[CONTENT] Received SHOW_SUGGESTIONS message:",
+        request.suggestions
+      );
+      updateFloatingSuggestions(request.suggestions);
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (request.type === "TEST_FLOATING_BOX") {
+      // Test function to show floating box with sample suggestions
+      console.log("[CONTENT] Testing floating box with sample suggestions");
+      updateFloatingSuggestions([
+        "Test suggestion 1",
+        "Test suggestion 2",
+        "Test suggestion 3",
+      ]);
       sendResponse({ ok: true });
       return;
     }
