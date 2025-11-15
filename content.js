@@ -34,6 +34,8 @@ function containsMedia(el) {
   const existingMessages = new Set(); // Track all messages found during context loading
   let currentChatSession = null; // Track current chat to detect changes
   let contextLoadingTimeout = null; // Timeout for delayed context loading
+  // Track which sessions have already had their context saved
+  const sessionsWithContext = new Set();
 
   function seen(key) {
     return recent.indexOf(key) !== -1;
@@ -65,6 +67,14 @@ function containsMedia(el) {
       return "";
     }
   }
+  function getActiveChatInfo() {
+    const chatTitle = normalizeSpaces(String(getChatTitleByYourMethod() || ""));
+    const hrefHash = (location.hash || "").replace(/^#/, "");
+    const sessionId = chatTitle
+      ? `${chatTitle}::${hrefHash || "local"}`
+      : hrefHash || `unknown::${location.pathname}`;
+    return { sessionId, chatTitle, hrefHash };
+  }
 
   function getChatTitleByYourMethod() {
     try {
@@ -90,37 +100,47 @@ function containsMedia(el) {
 
   // Backwards-compatible active chat info extractor. Uses the title extractor above
   // and falls back to URL hash when necessary.
-  function getActiveChatInfo() {
-    const chatTitle = normalizeSpaces(String(getChatTitleByYourMethod() || ""));
-    const hrefHash = (location.hash || "").replace(/^#/, "");
-    const sessionId = chatTitle
-      ? `${chatTitle}::${hrefHash || "local"}`
-      : hrefHash || `unknown::${location.pathname}`;
-    return { sessionId, chatTitle, hrefHash };
-  }
+  function detectChatChange() {
+    const info = getActiveChatInfo();
+    const newSessionId = info.sessionId;
 
-  function getTextFromElement(el) {
-    if (!el) return "";
+    if (currentChatSession !== newSessionId) {
+      console.log(
+        `[CONTENT] 🔄 Chat changed from "${currentChatSession}" to "${newSessionId}"`
+      );
+      currentChatSession = newSessionId;
 
-    try {
-      const rendered = (el.innerText || "").toString().trim();
-      if (rendered) return normalizeSpaces(rendered);
+      // Reset state for new chat
+      isInitialized = false;
+      existingMessages.clear();
+      recent.length = 0;
 
-      const raw = (el.textContent || "").toString().trim();
-      if (raw) return normalizeSpaces(raw);
+      // Clear any pending context loading
+      if (contextLoadingTimeout) {
+        clearTimeout(contextLoadingTimeout);
+      }
 
-      const parts = [];
-      const nodes = el.querySelectorAll("span, p, div");
-      nodes.forEach((n) => {
-        const t = (n.innerText || n.textContent || "").toString().trim();
-        if (t) parts.push(t);
-      });
-      return normalizeSpaces(parts.join(" "));
-    } catch (e) {
-      return "";
+      if (!sessionsWithContext.has(newSessionId)) {
+        contextLoadingTimeout = setTimeout(() => {
+          scanLast5Messages();
+          sessionsWithContext.add(newSessionId); // Mark context as saved
+          // Enable new message capture after context loads
+          setTimeout(() => {
+            isInitialized = true;
+            console.log("[CONTENT] 🔄 Now capturing new messages only");
+          }, 1000);
+        }, 1500); // Wait for chat to fully load
+      } else {
+        // If context already saved, just enable new message capture
+        setTimeout(() => {
+          isInitialized = true;
+          console.log(
+            "[CONTENT] 🔄 Now capturing new messages only (context already loaded)"
+          );
+        }, 500);
+      }
     }
   }
-
   // Attempt to retrieve the raw `data-pre-plain-text` attribute from a node
   function getPrePlainTextAttribute(el) {
     let node = el;
@@ -348,6 +368,40 @@ function containsMedia(el) {
     return null;
   }
 
+  function extractReplyInfo(container) {
+    // Try to find the quoted/reply section in the message bubble
+    // WhatsApp often uses [data-testid="msg-meta"] or a div with role="button" and aria-label for replies
+    let replyText = "";
+    let replySender = "";
+
+    // Try common selectors for quoted/reply
+    const replyContainer =
+      container.querySelector('[data-testid="msg-meta"]') ||
+      container.querySelector(".quoted-mention, .quoted-message") ||
+      container.querySelector("._1Gy50"); // fallback for obfuscated class
+
+    if (replyContainer) {
+      // Try to get sender and text
+      const senderEl = replyContainer.querySelector('span[dir="auto"]');
+      if (senderEl) replySender = senderEl.innerText.trim();
+
+      // The quoted text is often in a selectable-text span inside the reply container
+      const textEl = replyContainer.querySelector("span.selectable-text");
+      if (textEl) replyText = textEl.innerText.trim();
+      else replyText = replyContainer.innerText.trim();
+    }
+
+    if (replyText) {
+      return {
+        replyTo: {
+          sender: replySender,
+          text: replyText,
+        },
+      };
+    }
+    return null;
+  }
+
   function handleElement(el) {
     // Only process new messages after initialization
     if (!isInitialized) return;
@@ -372,19 +426,27 @@ function containsMedia(el) {
       (typeof parseTimestampFromElement === "function"
         ? parseTimestampFromElement(container)
         : null) || Date.now();
-    console.log(
-      "[CONTENT] 💬 Processing new message at bottom:",
-      text.substring(0, 50) + "...",
-      new Date(parsedTs).toISOString()
-    );
-    saveMessage({
+
+    // NEW: Extract reply info if present
+    const replyInfo = extractReplyInfo(container);
+
+    const msgObj = {
       text,
       timestamp: parsedTs,
       platform: "whatsapp",
       type: guessDirection(container),
       sessionId: info.sessionId,
       chatTitle: info.chatTitle,
-    });
+      ...(replyInfo || {}),
+    };
+
+    console.log(
+      "[CONTENT] 💬 Processing new message at bottom:",
+      text.substring(0, 50) + "...",
+      new Date(parsedTs).toISOString(),
+      replyInfo ? `(reply to: ${replyInfo.replyTo.text})` : ""
+    );
+    saveMessage(msgObj);
   }
 
   // Check if element is currently visible in viewport
@@ -689,4 +751,25 @@ function containsMedia(el) {
 
   // Start monitoring when content script loads
   startObservers();
+
+  function getTextFromElement(el) {
+    if (!el) return "";
+    try {
+      const rendered = (el.innerText || "").toString().trim();
+      if (rendered) return normalizeSpaces(rendered);
+
+      const raw = (el.textContent || "").toString().trim();
+      if (raw) return normalizeSpaces(raw);
+
+      const parts = [];
+      const nodes = el.querySelectorAll("span, p, div");
+      nodes.forEach((n) => {
+        const t = (n.innerText || n.textContent || "").toString().trim();
+        if (t) parts.push(t);
+      });
+      return normalizeSpaces(parts.join(" "));
+    } catch (e) {
+      return "";
+    }
+  }
 })();
