@@ -66,12 +66,17 @@ function containsMedia(el) {
     box.style.left = "50%";
     box.style.transform = "translateX(-50%) translateY(-20px)";
     box.style.zIndex = "1000";
-    box.style.background = "rgba(17, 27, 33, 0.95)";
-    box.style.backdropFilter = "blur(10px)";
+    // Liquid glass effect with gradient and enhanced blur
+    box.style.background =
+      "linear-gradient(135deg, rgba(17, 27, 33, 0.7) 0%, rgba(30, 42, 49, 0.8) 100%)";
+    box.style.backdropFilter = "blur(20px) saturate(180%)";
+    box.style.WebkitBackdropFilter = "blur(20px) saturate(180%)"; // Safari support
     box.style.color = "#e9edef";
-    box.style.borderRadius = "12px";
+    box.style.borderRadius = "16px";
+    // Liquid glass border with subtle glow
+    box.style.border = "1px solid rgba(255, 255, 255, 0.18)";
     box.style.boxShadow =
-      "0 8px 24px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2)";
+      "0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.1)";
     box.style.padding = "14px 18px";
     box.style.minWidth = "320px";
     box.style.maxWidth = "480px";
@@ -80,16 +85,31 @@ function containsMedia(el) {
     box.style.fontSize = "14.2px";
     box.style.lineHeight = "1.5";
     box.style.opacity = "0";
-    box.style.transition = "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
+    box.style.transition = "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)";
     box.style.pointerEvents = "auto";
+    // Add subtle animation on hover
+    box.style.willChange = "transform, box-shadow";
+
+    // Add hover effect to enhance liquid glass feel
+    box.addEventListener("mouseenter", () => {
+      box.style.boxShadow =
+        "0 12px 40px rgba(0, 0, 0, 0.5), 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.1)";
+      box.style.borderColor = "rgba(255, 255, 255, 0.25)";
+    });
+
+    box.addEventListener("mouseleave", () => {
+      box.style.boxShadow =
+        "0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.1)";
+      box.style.borderColor = "rgba(255, 255, 255, 0.18)";
+    });
 
     box.innerHTML = `
       <div style="display: flex; align-items: center; margin-bottom: 10px; gap: 8px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 4px rgba(37, 211, 102, 0.3));">
           <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
         </svg>
-        <strong style="color: #e9edef; font-weight: 500; font-size: 14.5px; flex: 1;">Smart Reply</strong>
-        <button id="msghelp-close" style="background: none; border: none; cursor: pointer; padding: 4px; color: #8696a0; font-size: 20px; line-height: 1; transition: color 0.2s; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;" onmouseover="this.style.backgroundColor='rgba(255,255,255,0.1)'; this.style.color='#d9dee2';" onmouseout="this.style.backgroundColor='transparent'; this.style.color='#8696a0';">×</button>
+        <strong style="color: #e9edef; font-weight: 500; font-size: 14.5px; flex: 1; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);">Smart Reply</strong>
+        <button id="msghelp-close" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); cursor: pointer; padding: 4px; color: #8696a0; font-size: 20px; line-height: 1; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; backdrop-filter: blur(10px);" onmouseover="this.style.backgroundColor='rgba(255, 255, 255, 0.15)'; this.style.borderColor='rgba(255, 255, 255, 0.2)'; this.style.color='#d9dee2'; this.style.transform='rotate(90deg)';" onmouseout="this.style.backgroundColor='rgba(255, 255, 255, 0.08)'; this.style.borderColor='rgba(255, 255, 255, 0.1)'; this.style.color='#8696a0'; this.style.transform='rotate(0deg)';">×</button>
       </div>
       <div id="msghelp-suggestions-container">
         <div style="color: #8696a0; font-style: italic; font-size: 13.5px;">Waiting for suggestions...</div>
@@ -160,16 +180,16 @@ function containsMedia(el) {
       suggestions.length,
       "items"
     );
-    // Create suggestion list with WhatsApp-like styling
+    // Create suggestion list with liquid glass styling
     const suggestionsList = suggestions
       .map(
         (suggestion, index) => `
       <div class="msghelp-suggestion" data-text="${escapeHtml(suggestion)}" 
-           style="padding: 10px 14px; margin: 6px 0; background: rgba(42, 57, 66, 0.9); border-radius: 8px; cursor: pointer; transition: all 0.2s ease; border: 1px solid transparent; font-size: 14px; color: #e9edef;"
-           onmouseover="this.style.backgroundColor='rgba(52, 67, 76, 1)'; this.style.borderColor='rgba(134, 150, 160, 0.3)'; this.style.transform='translateX(2px)';" 
-           onmouseout="this.style.backgroundColor='rgba(42, 57, 66, 0.9)'; this.style.borderColor='transparent'; this.style.transform='translateX(0)';">
+           style="padding: 10px 14px; margin: 6px 0; background: linear-gradient(135deg, rgba(42, 57, 66, 0.6) 0%, rgba(52, 67, 76, 0.7) 100%); border-radius: 10px; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid rgba(255, 255, 255, 0.12); font-size: 14px; color: #e9edef; backdrop-filter: blur(10px); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);"
+           onmouseover="this.style.background='linear-gradient(135deg, rgba(52, 67, 76, 0.8) 0%, rgba(62, 77, 86, 0.9) 100%)'; this.style.borderColor='rgba(255, 255, 255, 0.2)'; this.style.transform='translateX(4px) scale(1.01)'; this.style.boxShadow='0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 20px rgba(37, 211, 102, 0.1)';" 
+           onmouseout="this.style.background='linear-gradient(135deg, rgba(42, 57, 66, 0.6) 0%, rgba(52, 67, 76, 0.7) 100%)'; this.style.borderColor='rgba(255, 255, 255, 0.12)'; this.style.transform='translateX(0) scale(1)'; this.style.boxShadow='0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05)';">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; filter: drop-shadow(0 0 3px rgba(37, 211, 102, 0.3));">
             <polyline points="9 11 12 14 22 4"></polyline>
             <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
           </svg>
@@ -189,16 +209,19 @@ function containsMedia(el) {
         const suggestionText = item.dataset.text;
         copyToClipboard(suggestionText);
 
-        // Show feedback with WhatsApp-style animation
-        item.style.background = "rgba(37, 211, 102, 0.2)";
-        item.style.borderColor = "#25d366";
+        // Show feedback with liquid glass animation
+        item.style.background =
+          "linear-gradient(135deg, rgba(37, 211, 102, 0.25) 0%, rgba(37, 211, 102, 0.35) 100%)";
+        item.style.borderColor = "rgba(37, 211, 102, 0.6)";
         item.style.color = "#25d366";
+        item.style.boxShadow =
+          "0 4px 20px rgba(37, 211, 102, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)";
         item.innerHTML = `
           <div style="display: flex; align-items: center; gap: 8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 4px rgba(37, 211, 102, 0.5));">
               <polyline points="20 6 9 17 4 12"></polyline>
             </svg>
-            <span>Copied to clipboard!</span>
+            <span style="text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);">Copied to clipboard!</span>
           </div>
         `;
 
