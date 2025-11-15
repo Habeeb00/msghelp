@@ -1,22 +1,48 @@
-// Minimal popup script - shows captured messages and offers a self-test
+// Popup script - upgraded to support tabs (History / Debug / Config)
+const API_ENDPOINT = "https://msghelp.onrender.com/suggest-reply"; // Replace with your backend API endpoint
+
+// Elements (some may be absent depending on page)
 const toggle = document.getElementById("toggle");
 const statusDiv = document.getElementById("status");
 const messagesList = document.getElementById("messagesList");
-const selftestBtn = document.getElementById("selftest");
-const selftestResult = document.getElementById("selftestResult");
 const msgCount = document.getElementById("msgCount");
 const clearBtn = document.getElementById("clearBtn");
 const exportBtn = document.getElementById("exportBtn");
 const scanBtn = document.getElementById("scanBtn");
 const resetBtn = document.getElementById("resetBtn");
-const debugBtn = document.getElementById("debugBtn");
 const testFloatingBtn = document.getElementById("testFloatingBtn");
 const suggestReplyBtn = document.getElementById("suggestReplyBtn");
-const contextInfo = document.getElementById("contextInfo");
-const contextCount = document.getElementById("contextCount");
-const newCount = document.getElementById("newCount");
-const currentSession = document.getElementById("currentSession");
-const API_ENDPOINT = "https://msghelp.onrender.com/suggest-reply"; // Replace with your backend API endpoint
+const dumpBtn = document.getElementById("dump-messages");
+const debugLast = document.getElementById("debug-last");
+const debugCount = document.getElementById("debug-count");
+
+// Backwards-compatible aliases / UI feedback element
+const selftestBtn = testFloatingBtn || document.getElementById("selftestBtn");
+// Use debug-last or status as a lightweight place to display test status
+const selftestResult =
+  document.getElementById("selftestResult") || debugLast || statusDiv;
+const debugBtn = document.getElementById("debugBtn") || dumpBtn;
+
+// Config elements
+const enableSuggestionsEl = document.getElementById("enable-suggestions");
+const maxHistoryEl = document.getElementById("max-history");
+const saveConfigBtn = document.getElementById("save-config");
+
+// Tab handling
+document.querySelectorAll(".tab").forEach((t) =>
+  t.addEventListener("click", (e) => {
+    document
+      .querySelectorAll(".tab")
+      .forEach((b) => b.classList.remove("active"));
+    e.currentTarget.classList.add("active");
+    const target = e.currentTarget.dataset.target;
+    document
+      .querySelectorAll(".page")
+      .forEach((p) => p.classList.remove("active"));
+    const page = document.getElementById(target);
+    if (page) page.classList.add("active");
+  })
+);
 
 function formatTime(ts) {
   try {
@@ -33,54 +59,38 @@ function escapeHtml(s) {
 
 function renderMessages() {
   chrome.storage.local.get(["messages"], ({ messages = [] }) => {
-    // Only display the most recent 5 messages (storage is capped at 5 by content script,
-    // but self-test or other tools may have written more), so slice defensively.
-    messages = messages.slice(0, 5);
+    messages = messages.slice(0, 50);
     messagesList.innerHTML = "";
     msgCount.textContent = `(${messages.length})`;
 
-    // Calculate stats
-    const contextMsgs = messages.filter((m) => m.isContext);
-    const newMsgs = messages.filter((m) => !m.isContext);
-    const sessions = [
-      ...new Set(messages.map((m) => m.sessionId || "unknown")),
-    ];
-
-    contextCount.textContent = contextMsgs.length;
-    newCount.textContent = newMsgs.length;
-    currentSession.textContent = sessions.length > 0 ? sessions[0] : "None";
-    contextInfo.textContent = contextMsgs.length > 0 ? "Loaded" : "Not loaded";
+    // Update debug count when available
+    if (debugCount) debugCount.textContent = messages.length;
 
     if (!messages || messages.length === 0) {
-      messagesList.textContent = "No messages captured yet.";
+      messagesList.innerHTML =
+        '<div class="placeholder">No messages captured yet.</div>';
       return;
     }
-    // Render messages (most recent first)
+
     messages.forEach((m, idx) => {
       const row = document.createElement("div");
-      row.style.borderBottom = "1px solid #eee";
-      row.style.padding = "6px 4px";
+      row.className = "message-row";
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const label = document.createElement("div");
+      label.textContent = `${idx + 1}. ${m.isContext ? "Context" : "New"}`;
+      const time = document.createElement("div");
+      time.className = "mono";
+      time.textContent = formatTime(m.timestamp || Date.now());
+      meta.appendChild(label);
+      meta.appendChild(time);
 
-      // Add session info and type indicators
-      const sessionInfo = m.sessionId
-        ? `📱 ${escapeHtml(m.chatTitle || "Unknown Chat")}`
-        : "";
-      const messageType = m.isContext ? "📖 Context" : "💬 New";
-      const directionIcon =
-        m.type === "outgoing" ? "➡️" : m.type === "incoming" ? "⬅️" : "❓";
+      const text = document.createElement("div");
+      text.className = "text";
+      text.textContent = m.text || "";
 
-      row.innerHTML = `
-        <div style="font-size:11px;color:#666; display: flex; justify-content: space-between;">
-          <span>${idx + 1}. ${messageType} ${directionIcon} ${escapeHtml(
-        m.type || ""
-      )}</span>
-          <span>${formatTime(m.timestamp)}</span>
-        </div>
-        <div style="font-size:10px;color:#999;margin-top:2px;">${sessionInfo}</div>
-        <div style="margin-top:4px;white-space:pre-wrap;background:${
-          m.isContext ? "#f8f9fa" : "#e8f5e9"
-        };padding:4px;border-radius:3px;">${escapeHtml(m.text)}</div>
-      `;
+      row.appendChild(meta);
+      row.appendChild(text);
       messagesList.appendChild(row);
     });
   });
@@ -100,41 +110,46 @@ toggle.addEventListener("change", () => {
 });
 
 // self-test: directly seed chrome.storage with messages (no background required)
-selftestBtn.addEventListener("click", async () => {
-  selftestResult.textContent = "Running self-test...";
-  const seeds = [
-    "Hello — seed 1",
-    "How's it going? — seed 2",
-    "Are you there? — seed 3",
-    "This is context — seed 4",
-  ];
-  const incoming = "Incoming test message — please suggest reply";
+if (selftestBtn) {
+  selftestBtn.addEventListener("click", async () => {
+    if (selftestResult) selftestResult.textContent = "Running self-test...";
+    const seeds = [
+      "Hello — seed 1",
+      "How's it going? — seed 2",
+      "Are you there? — seed 3",
+      "This is context — seed 4",
+    ];
+    const incoming = "Incoming test message — please suggest reply";
 
-  // prepend seeds and incoming to storage
-  chrome.storage.local.get(["messages"], ({ messages = [] }) => {
-    const now = Date.now();
-    const seeded = [];
-    for (const s of seeds)
+    // prepend seeds and incoming to storage
+    chrome.storage.local.get(["messages"], ({ messages = [] }) => {
+      const now = Date.now();
+      const seeded = [];
+      for (const s of seeds)
+        seeded.push({
+          text: s,
+          platform: "whatsapp",
+          timestamp: now - 1000,
+          type: "outgoing",
+        });
       seeded.push({
-        text: s,
+        text: incoming,
         platform: "whatsapp",
-        timestamp: now - 1000,
-        type: "outgoing",
+        timestamp: now,
+        type: "incoming",
       });
-    seeded.push({
-      text: incoming,
-      platform: "whatsapp",
-      timestamp: now,
-      type: "incoming",
-    });
-    // keep existing behavior but don't artificially cap display here
-    const combined = seeded.concat(messages).slice(0, 5);
-    chrome.storage.local.set({ messages: combined }, () => {
-      renderMessages();
-      selftestResult.textContent = "Self-test done";
+      // keep existing behavior but don't artificially cap display here
+      const combined = seeded.concat(messages).slice(0, 5);
+      chrome.storage.local.set({ messages: combined }, () => {
+        renderMessages();
+        if (selftestResult) selftestResult.textContent = "Self-test done";
+        setTimeout(() => {
+          if (selftestResult) selftestResult.textContent = "";
+        }, 2000);
+      });
     });
   });
-});
+}
 
 // Suggest Reply button handler
 if (suggestReplyBtn) {
@@ -294,34 +309,34 @@ resetBtn.addEventListener("click", () => {
   });
 });
 
-debugBtn.addEventListener("click", () => {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0]) {
+if (debugBtn) {
+  debugBtn.addEventListener("click", () => {
+    // trigger a GET_DEBUG_INFO from content script and show a compact summary
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs[0]) return;
       chrome.tabs.sendMessage(
         tabs[0].id,
         { type: "GET_DEBUG_INFO" },
         (response) => {
-          if (response) {
-            const debugInfo = `Debug Info:
-Existing Messages: ${response.existingMessagesCount}
-Recent Buffer: ${response.recentCount}
-Current Session: ${response.currentSessionId}
-Last Chat Change: ${response.lastChatChangeTime}
-Total Messages in Storage: ${response.storageCount}`;
-
-            selftestResult.textContent = "Debug info displayed in alert";
-            alert(debugInfo);
-            setTimeout(() => (selftestResult.textContent = ""), 2000);
-          } else {
-            selftestResult.textContent =
-              "No response from content script. Make sure you are on WhatsApp Web.";
-            setTimeout(() => (selftestResult.textContent = ""), 3000);
+          if (chrome.runtime.lastError) {
+            alert(
+              "No response from content script. Make sure WhatsApp Web is open and content script is injected."
+            );
+            return;
           }
+          if (!response) {
+            alert("No debug information available.");
+            return;
+          }
+          const debugInfo = `Existing Messages: ${response.existingMessagesCount}\nRecent Buffer: ${response.recentCount}\nCurrent Session: ${response.currentSessionId}\nLast Chat Change: ${response.lastChatChangeTime}\nTotal Messages in Storage: ${response.storageCount}`;
+          debugLast &&
+            (debugLast.textContent = new Date().toLocaleTimeString());
+          alert(debugInfo);
         }
       );
-    }
+    });
   });
-});
+}
 
 // Test floating box functionality
 testFloatingBtn.addEventListener("click", () => {
@@ -343,11 +358,10 @@ suggestReplyBtn.addEventListener("click", () => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs[0] && tabs[0].url && tabs[0].url.includes("web.whatsapp.com")) {
       chrome.tabs.sendMessage(tabs[0].id, { action: "SHOW_SUGGESTIONS" });
-      selftestResult.textContent = "Suggestion request sent";
-      setTimeout(() => (selftestResult.textContent = ""), 2000);
+      // small UI feedback via debug-last
+      debugLast && (debugLast.textContent = "Suggestion requested");
     } else {
-      selftestResult.textContent = "Please open WhatsApp Web first";
-      setTimeout(() => (selftestResult.textContent = ""), 3000);
+      alert("Please open WhatsApp Web first");
     }
   });
 });
@@ -358,3 +372,32 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 renderMessages();
+
+// Dump messages to console (debug tab)
+if (dumpBtn) {
+  dumpBtn.addEventListener("click", () => {
+    chrome.storage.local.get(["messages"], ({ messages = [] }) => {
+      console.log("MSGHELP: messages dump:", messages);
+      alert(`Dumped ${messages.length} messages to console`);
+    });
+  });
+}
+
+// Config: load/save simple settings
+chrome.storage.local.get(["config"], ({ config = {} }) => {
+  enableSuggestionsEl &&
+    (enableSuggestionsEl.checked = !!config.enableSuggestions);
+  maxHistoryEl && (maxHistoryEl.value = config.maxHistory || 5);
+});
+
+if (saveConfigBtn) {
+  saveConfigBtn.addEventListener("click", () => {
+    const cfg = {
+      enableSuggestions: !!(enableSuggestionsEl && enableSuggestionsEl.checked),
+      maxHistory: Number(maxHistoryEl && maxHistoryEl.value) || 5,
+    };
+    chrome.storage.local.set({ config: cfg }, () => {
+      alert("Configuration saved");
+    });
+  });
+}

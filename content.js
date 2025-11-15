@@ -66,53 +66,143 @@ function containsMedia(el) {
     box.style.left = "50%";
     box.style.transform = "translateX(-50%) translateY(-20px)";
     box.style.zIndex = "1000";
-    // Liquid glass effect with gradient and enhanced blur
-    box.style.background =
-      "linear-gradient(135deg, rgba(17, 27, 33, 0.7) 0%, rgba(30, 42, 49, 0.8) 100%)";
-    box.style.backdropFilter = "blur(20px) saturate(180%)";
-    box.style.WebkitBackdropFilter = "blur(20px) saturate(180%)"; // Safari support
-    box.style.color = "#e9edef";
-    box.style.borderRadius = "16px";
-    // Liquid glass border with subtle glow
-    box.style.border = "1px solid rgba(255, 255, 255, 0.18)";
-    box.style.boxShadow =
-      "0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.1)";
-    box.style.padding = "14px 18px";
+
+    // Light white translucent background with high transparency
+    box.style.background = "rgba(255, 255, 255, 0.06)";
+
+    // Strong frosted blur + subtle brightness to simulate distortion
+    box.style.backdropFilter = "blur(40px) saturate(180%) brightness(1.05)";
+    box.style.WebkitBackdropFilter =
+      "blur(40px) saturate(180%) brightness(1.05)";
+    box.style.filter = "drop-shadow(0 8px 24px rgba(0,0,0,0.08))";
+    box.style.color = "rgba(255,255,255,0.95)";
+    box.style.borderRadius = "28px";
+
+    // Thin translucent border and subtle inner highlight for glass
+    box.style.border = "1px solid rgba(255,255,255,0.12)";
+    box.style.boxShadow = `0 8px 32px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.16)`;
+
+    box.style.padding = "18px 22px";
     box.style.minWidth = "320px";
-    box.style.maxWidth = "480px";
+    box.style.maxWidth = "520px";
+    box.style.fontFamily =
+      "Segoe UI, Helvetica Neue, Helvetica, Arial, sans-serif";
+    box.style.fontSize = "14.3px";
+    box.style.lineHeight = "1.6";
+
+    // Smooth fade-in (opacity) and subtle transform transitions
+    box.style.opacity = "0";
+    box.style.transition =
+      "opacity 0.6s cubic-bezier(0.4,0,0.2,1), transform 0.5s cubic-bezier(0.4,0,0.2,1)";
+    box.style.pointerEvents = "auto";
+    box.style.willChange = "opacity, transform";
+    box.style.overflow = "hidden";
+
+    // Keep a gentle float animation, but remove gradient shifting
+    box.style.animationName = "msghelp-float";
+    box.style.animationDuration = "6s";
+    box.style.animationTimingFunction = "ease-in-out";
+    box.style.animationIterationCount = "infinite";
+
+    // Frosted blur with distortion using filter
+    box.style.backdropFilter = "blur(40px) saturate(180%) brightness(1.1)";
+    box.style.WebkitBackdropFilter =
+      "blur(40px) saturate(180%) brightness(1.1)";
+    box.style.filter = "drop-shadow(0 8px 32px rgba(0, 0, 0, 0.1))";
+
+    box.style.color = "#ffffff";
+
+    // Rounded corners
+    box.style.borderRadius = "28px";
+
+    // Subtle border for glass effect
+    box.style.border = "1px solid rgba(255, 255, 255, 0.18)";
+    box.style.boxShadow = `
+      0 8px 32px rgba(0, 0, 0, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.25),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.1)
+    `;
+
+    box.style.padding = "20px 24px";
+    box.style.minWidth = "340px";
+    box.style.maxWidth = "500px";
     box.style.fontFamily =
       "Segoe UI, Helvetica Neue, Helvetica, Lucida Grande, Arial, Ubuntu, Cantarell, Fira Sans, sans-serif";
-    box.style.fontSize = "14.2px";
-    box.style.lineHeight = "1.5";
+    box.style.fontSize = "14.5px";
+    box.style.lineHeight = "1.6";
+
+    // Smooth fade-in animation
     box.style.opacity = "0";
-    box.style.transition = "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)";
+    box.style.transition =
+      "opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)";
     box.style.pointerEvents = "auto";
-    // Add subtle animation on hover
-    box.style.willChange = "transform, box-shadow";
+    box.style.willChange = "opacity, transform";
+    box.style.overflow = "hidden";
+
+    // Inject CSS animations if not already present
+    if (!document.getElementById("msghelp-animations")) {
+      const style = document.createElement("style");
+      style.id = "msghelp-animations";
+      style.textContent = `
+          @keyframes msghelp-float {
+            0%, 100% { transform: translateX(-50%) translateY(0px); }
+            50% { transform: translateX(-50%) translateY(-6px); }
+          }
+
+          @keyframes msghelp-shimmer {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+          }
+
+          @keyframes msghelp-pulse-glow {
+            0%, 100% { box-shadow: 0 0 12px rgba(255,255,255,0.06); }
+            50% { box-shadow: 0 0 18px rgba(255,255,255,0.08); }
+          }
+      `;
+      document.head.appendChild(style);
+    }
 
     // Add hover effect to enhance liquid glass feel
     box.addEventListener("mouseenter", () => {
-      box.style.boxShadow =
-        "0 12px 40px rgba(0, 0, 0, 0.5), 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.1)";
-      box.style.borderColor = "rgba(255, 255, 255, 0.25)";
+      box.style.transform = "translateX(-50%) translateY(0px)";
+      box.style.background = "rgba(255, 255, 255, 0)";
+      box.style.boxShadow = `
+        0 12px 48px rgba(0, 0, 0, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.15)
+      `;
+      box.style.borderColor = "rgba(255, 255, 255, 0.48)";
     });
 
     box.addEventListener("mouseleave", () => {
-      box.style.boxShadow =
-        "0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.1)";
+      box.style.transform = "translateX(-50%) translateY(0px)";
+      box.style.background = "rgba(255, 255, 255, 0)";
+      box.style.boxShadow = `
+        0 8px 32px rgba(0, 0, 0, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.1)
+      `;
       box.style.borderColor = "rgba(255, 255, 255, 0.18)";
     });
 
     box.innerHTML = `
-      <div style="display: flex; align-items: center; margin-bottom: 10px; gap: 8px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 4px rgba(37, 211, 102, 0.3));">
-          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-        </svg>
-        <strong style="color: #e9edef; font-weight: 500; font-size: 14.5px; flex: 1; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);">Smart Reply</strong>
-        <button id="msghelp-close" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.1); cursor: pointer; padding: 4px; color: #8696a0; font-size: 20px; line-height: 1; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; backdrop-filter: blur(10px);" onmouseover="this.style.backgroundColor='rgba(255, 255, 255, 0.15)'; this.style.borderColor='rgba(255, 255, 255, 0.2)'; this.style.color='#d9dee2'; this.style.transform='rotate(90deg)';" onmouseout="this.style.backgroundColor='rgba(255, 255, 255, 0.08)'; this.style.borderColor='rgba(255, 255, 255, 0.1)'; this.style.color='#8696a0'; this.style.transform='rotate(0deg)';">×</button>
+      <div style="display: flex; align-items: center; margin-bottom: 14px; gap: 10px;">
+        <div style="width: 36px; height: 36px; border-radius: 14px; background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255, 255, 255, 0.25); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.3);">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255, 255, 255, 0.9)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+          </svg>
+        </div>
+        <strong style="color: rgba(255, 255, 255, 0.95); font-weight: 600; font-size: 16px; flex: 1; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); letter-spacing: 0.3px;">Smart Reply</strong>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+          <button id="msghelp-manslater-btn" class="msghelp-manslater-btn" style="appearance:none;border:1px solid rgba(255,255,255,0.14);background:transparent;color:rgba(255,255,255,0.9);padding:6px 10px;border-radius:12px;font-size:12px;cursor:pointer;">Manslater: Off</button>
+        </div>
+        <button id="msghelp-close" style="background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.2); cursor: pointer; padding: 6px; color: rgba(255, 255, 255, 0.8); font-size: 22px; line-height: 1; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 12px; backdrop-filter: blur(10px); font-weight: 300;" onmouseover="this.style.background='rgba(255, 255, 255, 0.25)'; this.style.borderColor='rgba(255, 255, 255, 0.4)'; this.style.color='rgba(255, 255, 255, 1)'; this.style.transform='rotate(90deg) scale(1.05)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.12)'; this.style.borderColor='rgba(255, 255, 255, 0.2)'; this.style.color='rgba(255, 255, 255, 0.8)'; this.style.transform='rotate(0deg) scale(1)';">×</button>
       </div>
       <div id="msghelp-suggestions-container">
-        <div style="color: #8696a0; font-style: italic; font-size: 13.5px;">Waiting for suggestions...</div>
+        <div style="color: rgba(255, 255, 255, 0.6); font-style: italic; font-size: 14px; text-align: center; padding: 12px;">
+          <div style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.6); animation: msghelp-pulse-glow 2s ease-in-out infinite; margin-right: 8px;"></div>
+          Waiting for suggestions...
+        </div>
       </div>
     `;
 
@@ -127,6 +217,90 @@ function containsMedia(el) {
     });
 
     chatContainer.appendChild(box);
+
+    // Inject manslater-specific CSS (pink theme) if not present
+    if (!document.getElementById("msghelp-manslater-style")) {
+      const ms = document.createElement("style");
+      ms.id = "msghelp-manslater-style";
+      ms.textContent = `
+        #msghelp-floating-box.msghelp-manslater {
+          background: linear-gradient(180deg, rgba(255,182,193,0.12), rgba(255,105,180,0.06));
+          border-color: rgba(255,105,180,0.5) !important;
+          box-shadow: 0 12px 48px rgba(255,105,180,0.08), inset 0 1px 0 rgba(255,255,255,0.06);
+        }
+        #msghelp-floating-box.msghelp-manslater .msghelp-suggestion {
+          background: rgba(255,182,193,0.08) !important;
+          border-color: rgba(255,105,180,0.18) !important;
+        }
+        /* manslater status element removed - no status text displayed beneath the button */
+        .msghelp-manslater-btn {
+          transition: all 0.18s ease;
+          opacity: 0.95;
+        }
+        .msghelp-manslater-btn.active {
+          background: linear-gradient(90deg, rgba(255,105,180,0.18), rgba(255,120,200,0.12));
+          border-color: rgba(255,105,180,0.6) !important;
+          color: #fff !important;
+          box-shadow: 0 6px 18px rgba(255,105,180,0.08);
+          transform: translateY(-1px);
+        }
+      `;
+      document.head.appendChild(ms);
+    }
+
+    // Hook up the manslater toggle (button) to storage and update UI
+    const mansButton = box.querySelector("#msghelp-manslater-btn");
+
+    function applyManslaterMode(enabled) {
+      try {
+        if (enabled) {
+          box.classList.add("msghelp-manslater");
+        } else {
+          box.classList.remove("msghelp-manslater");
+        }
+      } catch (e) {
+        console.warn("[CONTENT] applyManslaterMode error", e);
+      }
+    }
+
+    if (mansButton) {
+      // Initialize from storage
+      chrome.storage.local.get(
+        ["manslaterMode"],
+        ({ manslaterMode = false }) => {
+          try {
+            if (manslaterMode) {
+              mansButton.classList.add("active");
+              mansButton.textContent = "Manslater: On";
+            } else {
+              mansButton.classList.remove("active");
+              mansButton.textContent = "Manslater: Off";
+            }
+            applyManslaterMode(!!manslaterMode);
+          } catch (e) {}
+        }
+      );
+
+      mansButton.addEventListener("click", () => {
+        // Toggle current state
+        chrome.storage.local.get(
+          ["manslaterMode"],
+          ({ manslaterMode = false }) => {
+            const enabled = !manslaterMode;
+            chrome.storage.local.set({ manslaterMode: enabled }, () => {
+              if (enabled) {
+                mansButton.classList.add("active");
+                mansButton.textContent = "Manslater: On";
+              } else {
+                mansButton.classList.remove("active");
+                mansButton.textContent = "Manslater: Off";
+              }
+              applyManslaterMode(enabled);
+            });
+          }
+        );
+      });
+    }
 
     // Trigger animation after a short delay
     setTimeout(() => {
@@ -166,8 +340,12 @@ function containsMedia(el) {
     }
 
     if (!suggestions || suggestions.length === 0) {
-      container.innerHTML =
-        '<div style="color: #8696a0; font-style: italic; font-size: 13.5px;">No suggestions available</div>';
+      container.innerHTML = `
+        <div style="color: rgba(255, 255, 255, 0.5); font-style: italic; font-size: 14px; text-align: center; padding: 12px;">
+          <div style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: linear-gradient(135deg, rgba(138, 99, 210, 0.6), rgba(94, 114, 228, 0.6)); animation: msghelp-pulse-glow 2s ease-in-out infinite; margin-right: 8px;"></div>
+          No suggestions available
+        </div>
+      `;
       // Keep the box visible even if no suggestions
       console.log("[CONTENT] No suggestions to display");
       return;
@@ -180,25 +358,76 @@ function containsMedia(el) {
       suggestions.length,
       "items"
     );
-    // Create suggestion list with liquid glass styling
+    // Create suggestion list with animated liquid glass styling
     const suggestionsList = suggestions
       .map(
         (suggestion, index) => `
       <div class="msghelp-suggestion" data-text="${escapeHtml(suggestion)}" 
-           style="padding: 10px 14px; margin: 6px 0; background: linear-gradient(135deg, rgba(42, 57, 66, 0.6) 0%, rgba(52, 67, 76, 0.7) 100%); border-radius: 10px; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid rgba(255, 255, 255, 0.12); font-size: 14px; color: #e9edef; backdrop-filter: blur(10px); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);"
-           onmouseover="this.style.background='linear-gradient(135deg, rgba(52, 67, 76, 0.8) 0%, rgba(62, 77, 86, 0.9) 100%)'; this.style.borderColor='rgba(255, 255, 255, 0.2)'; this.style.transform='translateX(4px) scale(1.01)'; this.style.boxShadow='0 4px 16px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 20px rgba(37, 211, 102, 0.1)';" 
-           onmouseout="this.style.background='linear-gradient(135deg, rgba(42, 57, 66, 0.6) 0%, rgba(52, 67, 76, 0.7) 100%)'; this.style.borderColor='rgba(255, 255, 255, 0.12)'; this.style.transform='translateX(0) scale(1)'; this.style.boxShadow='0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05)';">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; filter: drop-shadow(0 0 3px rgba(37, 211, 102, 0.3));">
-            <polyline points="9 11 12 14 22 4"></polyline>
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-          </svg>
-          <span style="flex: 1;">${escapeHtml(suggestion)}</span>
+           style="
+             padding: 14px 16px; 
+             margin: 8px 0; 
+             background: rgba(255, 255, 255, 0.1); 
+             border-radius: 18px; 
+             cursor: pointer; 
+             transition: all 0.3s ease; 
+             border: 1px solid rgba(255, 255, 255, 0.18); 
+             font-size: 14.5px; 
+             color: rgba(255, 255, 255, 0.95); 
+             backdrop-filter: blur(20px); 
+             box-shadow: 
+               0 2px 8px rgba(0, 0, 0, 0.05), 
+               inset 0 1px 0 rgba(255, 255, 255, 0.2);
+             position: relative;
+             overflow: hidden;
+             animation: msghelp-suggestion-fadein 0.5s ease ${
+               index * 0.1
+             }s backwards;
+           "
+           onmouseover="
+             this.style.background='rgba(255, 255, 255, 0.18)'; 
+             this.style.borderColor='rgba(255, 255, 255, 0.3)'; 
+             this.style.transform='translateX(4px)'; 
+             this.style.boxShadow='0 4px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
+           " 
+           onmouseout="
+             this.style.background='rgba(255, 255, 255, 0.1)'; 
+             this.style.borderColor='rgba(255, 255, 255, 0.18)'; 
+             this.style.transform='translateX(0)'; 
+             this.style.boxShadow='0 2px 8px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+           ">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 20px; height: 20px; border-radius: 8px; background: rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(255, 255, 255, 0.25);">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255, 255, 255, 0.8)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+          <span style="flex: 1; line-height: 1.5;">${escapeHtml(
+            suggestion
+          )}</span>
         </div>
       </div>
     `
       )
       .join("");
+
+    // Add fade-in animation for suggestions
+    if (!document.getElementById("msghelp-suggestion-animations")) {
+      const style = document.createElement("style");
+      style.id = "msghelp-suggestion-animations";
+      style.textContent = `
+        @keyframes msghelp-suggestion-fadein {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
 
     container.innerHTML = suggestionsList;
     console.log("[CONTENT] Floating box updated and shown");
@@ -209,21 +438,39 @@ function containsMedia(el) {
         const suggestionText = item.dataset.text;
         copyToClipboard(suggestionText);
 
-        // Show feedback with liquid glass animation
-        item.style.background =
-          "linear-gradient(135deg, rgba(37, 211, 102, 0.25) 0%, rgba(37, 211, 102, 0.35) 100%)";
-        item.style.borderColor = "rgba(37, 211, 102, 0.6)";
-        item.style.color = "#25d366";
-        item.style.boxShadow =
-          "0 4px 20px rgba(37, 211, 102, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)";
+        // Show feedback with clean glass success state
+        item.style.background = "rgba(100, 220, 150, 0.15)";
+        item.style.borderColor = "rgba(100, 220, 150, 0.4)";
+        item.style.color = "rgba(255, 255, 255, 1)";
+        item.style.transform = "scale(1.02)";
+        item.style.boxShadow = `
+          0 4px 20px rgba(100, 220, 150, 0.2), 
+          inset 0 1px 0 rgba(255, 255, 255, 0.3)
+        `;
         item.innerHTML = `
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 4px rgba(37, 211, 102, 0.5));">
-              <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-            <span style="text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);">Copied to clipboard!</span>
+          <div style="display: flex; align-items: center; gap: 12px; justify-content: center;">
+            <div style="width: 24px; height: 24px; border-radius: 50%; background: rgba(100, 220, 150, 0.25); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(100, 220, 150, 0.5); animation: msghelp-success-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(100, 220, 150, 1)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+            <span style="font-weight: 500; font-size: 15px;">Copied to clipboard!</span>
           </div>
         `;
+
+        // Add success animation
+        if (!document.getElementById("msghelp-success-animations")) {
+          const style = document.createElement("style");
+          style.id = "msghelp-success-animations";
+          style.textContent = `
+            @keyframes msghelp-success-pop {
+              0% { transform: scale(0); opacity: 0; }
+              50% { transform: scale(1.2); }
+              100% { transform: scale(1); opacity: 1; }
+            }
+          `;
+          document.head.appendChild(style);
+        }
 
         setTimeout(() => {
           // Keep the box visible after copying
