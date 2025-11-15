@@ -13,6 +13,9 @@ import json
 from langgraph.graph import StateGraph, END
 from typing_extensions import TypedDict
 
+from dotenv import load_dotenv
+load_dotenv()
+
 app = FastAPI()
 
 # CORS
@@ -439,119 +442,6 @@ async def suggest_reply_general(request: GeneralReplyRequest, background_tasks: 
         )
 
 
-@app.post("/chat", response_model=GeneralChatResponse)
-async def general_chat(request: GeneralChatRequest):
-    """
-    General LLM inference endpoint - not tied to reply suggestions.
-    Can be used for any conversational AI task.
-    
-    Features:
-    - Use default model or specify custom model
-    - Maintain conversation history
-    - Adjust temperature and max_tokens
-    - General purpose chat completion
-    """
-    
-    # Use specified model or default to a general LLM (not fine-tuned)
-    model = request.model or os.getenv("GENERAL_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo")
-    
-    print(f"[CHAT] Processing with model: {model}")
-    
-    try:
-        # Build messages array
-        messages = []
-        
-        # Add conversation history if provided
-        if request.conversation_history:
-            messages.extend(request.conversation_history)
-        
-        # Add current user message
-        messages.append({
-            "role": "user",
-            "content": request.message
-        })
-        
-        # Call Together AI
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-        )
-        
-        ai_response = response.choices[0].message.content.strip()
-        tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else None
-        
-        print(f"[CHAT] Response generated successfully")
-        
-        return GeneralChatResponse(
-            response=ai_response,
-            model_used=model,
-            tokens_used=tokens_used
-        )
-        
-    except Exception as e:
-        print(f"[CHAT ERROR] {str(e)}")
-        
-        # Handle rate limits
-        if "rate limit" in str(e).lower():
-            raise HTTPException(
-                status_code=429,
-                detail="Too many requests. Please try again in a moment."
-            )
-        
-        raise HTTPException(
-            status_code=500,
-            detail=f"Chat completion failed: {str(e)}"
-        )
-
-
-@app.post("/chat/stream")
-async def general_chat_stream(request: GeneralChatRequest):
-    """
-    Streaming version of general chat endpoint.
-    Returns response as Server-Sent Events (SSE).
-    """
-    from fastapi.responses import StreamingResponse
-    import asyncio
-    
-    model = request.model or os.getenv("GENERAL_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo")
-    
-    async def generate():
-        try:
-            messages = []
-            
-            if request.conversation_history:
-                messages.extend(request.conversation_history)
-            
-            messages.append({
-                "role": "user",
-                "content": request.message
-            })
-            
-            # Stream response
-            stream = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                max_tokens=request.max_tokens,
-                temperature=request.temperature,
-                stream=True
-            )
-            
-            for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    content = chunk.choices[0].delta.content
-                    yield f"data: {json.dumps({'content': content})}\n\n"
-                    await asyncio.sleep(0)  # Allow other tasks to run
-            
-            yield f"data: {json.dumps({'done': True})}\n\n"
-            
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
 @app.delete("/session/{session_id}")
 async def clear_session(session_id: str):
     """Clear session data"""
@@ -607,24 +497,14 @@ async def root():
                 "description": "Get reply suggestions with general LLM (Llama 3.1)",
                 "model": "General LLM",
                 "features": ["Same format as suggest-reply", "Uses general model instead"]
-            },
-            "/chat": {
-                "method": "POST",
-                "description": "General LLM inference for any conversation",
-                "features": ["Multi-model support", "Conversation history", "Adjustable parameters"]
-            },
-            "/chat/stream": {
-                "method": "POST",
-                "description": "Streaming chat responses (SSE)",
-                "features": ["Real-time streaming", "Token-by-token output"]
             }
         },
         "features": [
             "Context-aware reply suggestions",
-            "General purpose chat",
+            "Fine-tuned model support",
+            "General LLM support",
             "Response caching",
-            "Session management",
-            "Streaming support"
+            "Session management"
         ]
     }
 
