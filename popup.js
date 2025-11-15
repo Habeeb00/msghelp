@@ -2,32 +2,37 @@
 const API_ENDPOINT = "https://msghelp.onrender.com/suggest-reply";
 // Replace with your backend API endpoint
 
-// Elements (some may be absent depending on page)
+// Elements for Home/Suggestions
 const toggle = document.getElementById("toggle");
 const statusDiv = document.getElementById("status");
+const manslaterToggle = document.getElementById("manslater-toggle");
+const manslaterStatus = document.getElementById("manslater-status");
+const suggestReplyBtn = document.getElementById("suggestReplyBtn");
+const suggestionStatus = document.getElementById("suggestion-status");
+const logDropdown = document.getElementById("log-dropdown");
+
+// Elements for History
 const messagesList = document.getElementById("messagesList");
 const msgCount = document.getElementById("msgCount");
 const clearBtn = document.getElementById("clearBtn");
 const exportBtn = document.getElementById("exportBtn");
 const scanBtn = document.getElementById("scanBtn");
-const resetBtn = document.getElementById("resetBtn");
 const testFloatingBtn = document.getElementById("testFloatingBtn");
-const suggestReplyBtn = document.getElementById("suggestReplyBtn");
-const dumpBtn = document.getElementById("dump-messages");
+const refreshHistoryBtn = document.getElementById("refresh-history");
+
+// Elements for Logs
 const debugLast = document.getElementById("debug-last");
 const debugCount = document.getElementById("debug-count");
-
-// Backwards-compatible aliases / UI feedback element
-const selftestBtn = testFloatingBtn || document.getElementById("selftestBtn");
-// Use debug-last or status as a lightweight place to display test status
-const selftestResult =
-  document.getElementById("selftestResult") || debugLast || statusDiv;
-const debugBtn = document.getElementById("debugBtn") || dumpBtn;
+const dumpBtn = document.getElementById("dump-messages");
+const resetBtn = document.getElementById("resetBtn");
 
 // Config elements
 const enableSuggestionsEl = document.getElementById("enable-suggestions");
 const maxHistoryEl = document.getElementById("max-history");
 const saveConfigBtn = document.getElementById("save-config");
+
+// UI feedback element for suggestion status
+const selftestResult = suggestionStatus || debugLast || statusDiv;
 
 // Tab handling
 document.querySelectorAll(".tab").forEach((t) =>
@@ -56,6 +61,15 @@ function formatTime(ts) {
 function escapeHtml(s) {
   if (!s) return "";
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function updateManslaterStatus(enabled) {
+  if (manslaterStatus) {
+    manslaterStatus.textContent = enabled ? "Manslater ON" : "Manslater OFF";
+  }
+  if (manslaterToggle) {
+    manslaterToggle.checked = !!enabled;
+  }
 }
 
 // Small helper to read chrome.storage with Promise syntax
@@ -103,16 +117,38 @@ function renderMessages() {
 }
 
 // initial state
-chrome.storage.local.get(["enabled"], ({ enabled = false }) => {
-  toggle.checked = enabled;
-  statusDiv.textContent = enabled ? "Extension ON" : "Extension OFF";
-});
-
-toggle.addEventListener("change", () => {
-  const enabled = toggle.checked;
-  chrome.storage.local.set({ enabled }, () => {
+if (toggle && statusDiv) {
+  chrome.storage.local.get(["enabled"], ({ enabled = false }) => {
+    toggle.checked = enabled;
     statusDiv.textContent = enabled ? "Extension ON" : "Extension OFF";
   });
+
+  toggle.addEventListener("change", () => {
+    const enabled = toggle.checked;
+    chrome.storage.local.set({ enabled }, () => {
+      statusDiv.textContent = enabled ? "Extension ON" : "Extension OFF";
+    });
+  });
+}
+
+if (manslaterToggle && manslaterStatus) {
+  chrome.storage.local.get(["manslaterMode"], ({ manslaterMode = false }) => {
+    updateManslaterStatus(!!manslaterMode);
+  });
+
+  manslaterToggle.addEventListener("change", () => {
+    const enabled = manslaterToggle.checked;
+    chrome.storage.local.set({ manslaterMode: enabled }, () => {
+      updateManslaterStatus(enabled);
+    });
+  });
+}
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local") return;
+  if (Object.prototype.hasOwnProperty.call(changes, "manslaterMode")) {
+    updateManslaterStatus(!!changes.manslaterMode.newValue);
+  }
 });
 
 // self-test: directly seed chrome.storage with messages (no background required)
@@ -157,27 +193,28 @@ if (selftestBtn) {
   });
 }
 
-// Suggest Reply button handler
+// Suggest Reply button handler (Home tab)
 if (suggestReplyBtn) {
   suggestReplyBtn.addEventListener("click", async () => {
-    selftestResult.textContent = "Getting reply suggestion...";
+    if (selftestResult)
+      selftestResult.textContent = "Getting reply suggestion...";
     try {
       const { messages = [] } = await chrome.storage.local.get(["messages"]);
       if (messages.length === 0) {
-        selftestResult.textContent = "No messages to suggest a reply for.";
-        setTimeout(() => (selftestResult.textContent = ""), 2000);
+        if (selftestResult)
+          selftestResult.textContent = "No messages to suggest a reply for.";
+        setTimeout(
+          () => selftestResult && (selftestResult.textContent = ""),
+          2000
+        );
         return;
       }
-
-      // The most recent message is the current message
       const currentMessage = messages[0];
-      // The next 4 messages are context messages
       const contextMessages = messages.slice(1, 5).map((msg) => ({
         text: msg.text,
         type: msg.type,
         timestamp: msg.timestamp,
       }));
-
       const payload = {
         current_message: {
           text: currentMessage.text,
@@ -186,22 +223,15 @@ if (suggestReplyBtn) {
         },
         context_messages: contextMessages,
       };
-
-      console.log("[POPUP] Sending payload to backend:", payload);
-      // Choose endpoint based on manslaterMode stored by content script toggle
       const { manslaterMode = false } = await getStorage(["manslaterMode"]);
       const endpoint = manslaterMode
         ? "https://msghelp.onrender.com/suggest-reply"
         : "https://msghelp.onrender.com/suggest-reply-general";
-
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(
@@ -210,12 +240,20 @@ if (suggestReplyBtn) {
           }`
         );
       }
-
       const data = await response.json();
-      selftestResult.textContent = `Suggestion: "${data.suggestion}" (Cached: ${data.cached})`;
-      console.log("[POPUP] Reply suggestion:", data.suggestion);
+      if (selftestResult)
+        selftestResult.textContent = `Suggestion: "${data.suggestion}" (Cached: ${data.cached})`;
+      // Optionally add log to dropdown
+      if (logDropdown) {
+        const opt = document.createElement("option");
+        opt.value = data.suggestion;
+        opt.textContent = `[${new Date().toLocaleTimeString()}] ${
+          data.suggestion
+        }`;
+        logDropdown.appendChild(opt);
+      }
 
-      // Send suggestions to content script to display in floating box
+      // Send suggestion to content script for floating box
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (
           tabs[0] &&
@@ -224,101 +262,121 @@ if (suggestReplyBtn) {
         ) {
           chrome.tabs.sendMessage(tabs[0].id, {
             type: "SHOW_SUGGESTIONS",
-            suggestions: [data.suggestion], // Convert single suggestion to array
+            suggestions: [data.suggestion],
           });
         }
       });
 
-      setTimeout(() => (selftestResult.textContent = ""), 5000); // Display suggestion for 5 seconds
+      setTimeout(
+        () => selftestResult && (selftestResult.textContent = ""),
+        5000
+      );
     } catch (e) {
-      console.error("[POPUP] Error suggesting reply:", e);
-      selftestResult.textContent = `Error: ${e.message}`;
-      setTimeout(() => (selftestResult.textContent = ""), 5000);
+      if (selftestResult) selftestResult.textContent = `Error: ${e.message}`;
+      setTimeout(
+        () => selftestResult && (selftestResult.textContent = ""),
+        5000
+      );
     }
   });
 }
 
-// clear messages
-clearBtn.addEventListener("click", () => {
-  chrome.storage.local.set({ messages: [] }, () => {
-    renderMessages();
+// clear messages (History tab)
+if (clearBtn) {
+  clearBtn.addEventListener("click", () => {
+    chrome.storage.local.set({ messages: [] }, () => {
+      renderMessages();
+    });
   });
-});
+}
 
-// scan active chat now (ask content script to run scanExisting)
+// scan active chat now (History tab)
 if (scanBtn) {
   scanBtn.addEventListener("click", () => {
-    selftestResult.textContent = "Scanning active chat...";
-    // prefer an open WhatsApp Web tab instead of whatever tab is active
+    if (selftestResult) selftestResult.textContent = "Scanning active chat...";
     chrome.tabs.query({}, (tabs) => {
       const wa = tabs.find(
         (t) => t && t.url && t.url.includes("web.whatsapp.com")
       );
       if (!wa) {
-        selftestResult.textContent =
-          "No WhatsApp Web tab found — open https://web.whatsapp.com and focus a chat, then try again.";
+        if (selftestResult)
+          selftestResult.textContent =
+            "No WhatsApp Web tab found — open https://web.whatsapp.com and focus a chat, then try again.";
         return;
       }
       chrome.tabs.sendMessage(wa.id, { type: "SCAN_NOW" }, (resp) => {
         if (chrome.runtime.lastError) {
-          // common: receiving end does not exist -> content script not injected
-          selftestResult.textContent =
-            "Scan failed: " +
-            chrome.runtime.lastError.message +
-            ". Try reloading the WhatsApp tab and the extension.";
+          if (selftestResult)
+            selftestResult.textContent =
+              "Scan failed: " +
+              chrome.runtime.lastError.message +
+              ". Try reloading the WhatsApp tab and the extension.";
           return;
         }
         renderMessages();
-        selftestResult.textContent =
-          resp && resp.ok ? "Scan complete" : "Scan finished";
-        setTimeout(() => (selftestResult.textContent = ""), 2000);
+        if (selftestResult)
+          selftestResult.textContent =
+            resp && resp.ok ? "Scan complete" : "Scan finished";
+        setTimeout(
+          () => selftestResult && (selftestResult.textContent = ""),
+          2000
+        );
       });
     });
   });
 }
 
-// export messages to clipboard as JSON
-exportBtn.addEventListener("click", async () => {
-  chrome.storage.local.get(["messages"], ({ messages = [] }) => {
-    const json = JSON.stringify(messages, null, 2);
-    // try clipboard API first
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard
-        .writeText(json)
-        .then(() => {
-          selftestResult.textContent = "Exported JSON to clipboard";
-          setTimeout(() => (selftestResult.textContent = ""), 2000);
-        })
-        .catch(() => {
-          // fallback: open in new window
-          const w = window.open();
-          w.document.open();
-          w.document.write("<pre>" + escapeHtml(json) + "</pre>");
-          w.document.close();
-        });
-    } else {
-      const w = window.open();
-      w.document.open();
-      w.document.write("<pre>" + escapeHtml(json) + "</pre>");
-      w.document.close();
-    }
-  });
-});
-
-// Add handlers for new testing buttons
-resetBtn.addEventListener("click", () => {
-  chrome.storage.local.clear(() => {
-    // Send message to content script to reset its state
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { type: "RESET_STATE" });
+// export messages to clipboard as JSON (History tab)
+if (exportBtn) {
+  exportBtn.addEventListener("click", async () => {
+    chrome.storage.local.get(["messages"], ({ messages = [] }) => {
+      const json = JSON.stringify(messages, null, 2);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard
+          .writeText(json)
+          .then(() => {
+            if (selftestResult)
+              selftestResult.textContent = "Exported JSON to clipboard";
+            setTimeout(
+              () => selftestResult && (selftestResult.textContent = ""),
+              2000
+            );
+          })
+          .catch(() => {
+            const w = window.open();
+            w.document.open();
+            w.document.write("<pre>" + escapeHtml(json) + "</pre>");
+            w.document.close();
+          });
+      } else {
+        const w = window.open();
+        w.document.open();
+        w.document.write("<pre>" + escapeHtml(json) + "</pre>");
+        w.document.close();
       }
     });
-    renderMessages();
-    selftestResult.textContent = "Reset complete - all data cleared";
-    setTimeout(() => (selftestResult.textContent = ""), 2000);
   });
-});
+}
+
+// Reset context (Logs tab)
+if (resetBtn) {
+  resetBtn.addEventListener("click", () => {
+    chrome.storage.local.clear(() => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]) {
+          chrome.tabs.sendMessage(tabs[0].id, { type: "RESET_STATE" });
+        }
+      });
+      renderMessages();
+      if (selftestResult)
+        selftestResult.textContent = "Reset complete - all data cleared";
+      setTimeout(
+        () => selftestResult && (selftestResult.textContent = ""),
+        2000
+      );
+    });
+  });
+}
 
 if (debugBtn) {
   debugBtn.addEventListener("click", () => {
@@ -384,7 +442,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 renderMessages();
 
-// Dump messages to console (debug tab)
+// Dump messages to console (Logs tab)
 if (dumpBtn) {
   dumpBtn.addEventListener("click", () => {
     chrome.storage.local.get(["messages"], ({ messages = [] }) => {
@@ -394,13 +452,12 @@ if (dumpBtn) {
   });
 }
 
-// Config: load/save simple settings
+// Config: load/save simple settings (Config tab)
 chrome.storage.local.get(["config"], ({ config = {} }) => {
-  enableSuggestionsEl &&
-    (enableSuggestionsEl.checked = !!config.enableSuggestions);
-  maxHistoryEl && (maxHistoryEl.value = config.maxHistory || 5);
+  if (enableSuggestionsEl)
+    enableSuggestionsEl.checked = !!config.enableSuggestions;
+  if (maxHistoryEl) maxHistoryEl.value = config.maxHistory || 5;
 });
-
 if (saveConfigBtn) {
   saveConfigBtn.addEventListener("click", () => {
     const cfg = {

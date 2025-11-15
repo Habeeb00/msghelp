@@ -17,9 +17,12 @@ function containsMedia(el) {
 // - Saves newest messages to chrome.storage.local.messages
 
 (function () {
-  if (!location.hostname.includes("web.whatsapp.com")) return;
-
-  console.log("[CONTENT] WhatsApp DOM retriever loaded ✅");
+  // Prevent duplicate script execution
+  if (window.msghelpContentScriptLoaded) {
+    console.log("[CONTENT] Script already loaded, preventing duplicate");
+    return;
+  }
+  window.msghelpContentScriptLoaded = true;
 
   // WhatsApp text bubble selectors
   const messageSelectors = [
@@ -46,19 +49,31 @@ function containsMedia(el) {
   // State management for minimized/expanded
   // Initialize to false; actual persisted value will be read when injecting
   let isMinimized = false;
+  let isInjecting = false; // Prevent concurrent injections
 
   // Floating UI for suggestions
   function injectFloatingBox() {
-    // Remove existing boxes if they exist
-    const existingBox = document.getElementById("msghelp-floating-box");
-    const existingBubble = document.getElementById("msghelp-minimized-bubble");
-    if (existingBox) existingBox.remove();
-    if (existingBubble) existingBubble.remove();
+    // Prevent concurrent injection attempts
+    if (isInjecting) {
+      console.log("[CONTENT] Injection already in progress, skipping");
+      return;
+    }
+
+    isInjecting = true;
+
+    // Remove all existing floating boxes and bubbles if they exist (prevents duplicates)
+    document
+      .querySelectorAll("#msghelp-floating-box")
+      .forEach((el) => el.remove());
+    document
+      .querySelectorAll("#msghelp-minimized-bubble")
+      .forEach((el) => el.remove());
 
     // Find the chat container to position relative to it
     const chatContainer = document.querySelector("#main");
     if (!chatContainer) {
       console.warn("[CONTENT] Chat container not found, delaying injection");
+      isInjecting = false; // Reset flag before retry
       setTimeout(injectFloatingBox, 500);
       return;
     }
@@ -75,6 +90,9 @@ function containsMedia(el) {
         createMinimizedBubble(chatContainer);
         // Create main floating box
         createMainFloatingBox(chatContainer);
+        // Reset injection flag
+        isInjecting = false;
+        console.log("[CONTENT] Floating box injection completed");
       });
     } catch (e) {
       // If storage unavailable, fall back to in-memory state
@@ -84,6 +102,9 @@ function containsMedia(el) {
       );
       createMinimizedBubble(chatContainer);
       createMainFloatingBox(chatContainer);
+      // Reset injection flag
+      isInjecting = false;
+      console.log("[CONTENT] Floating box injection completed (fallback)");
     }
   }
 
@@ -120,22 +141,24 @@ function containsMedia(el) {
     bubble.style.pointerEvents = isMinimized ? "auto" : "none";
 
     bubble.innerHTML = `
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255, 255, 255, 0.9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(37, 211, 102, 0.9)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
       </svg>
     `;
 
     // Add hover effects
     bubble.addEventListener("mouseenter", () => {
-      bubble.style.background = "rgba(255, 255, 255, 0.12)";
+      bubble.style.background = "rgba(255, 255, 255, 0.15)";
       bubble.style.transform = "translateY(-50%) scale(1.1)";
-      bubble.style.boxShadow = "0 12px 48px rgba(0, 0, 0, 0.2)";
+      bubble.style.boxShadow =
+        "0 12px 48px rgba(0, 0, 0, 0.3), 0 6px 16px rgba(0, 0, 0, 0.15)";
     });
 
     bubble.addEventListener("mouseleave", () => {
       bubble.style.background = "rgba(255, 255, 255, 0.08)";
       bubble.style.transform = "translateY(-50%) scale(1)";
-      bubble.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.12)";
+      bubble.style.boxShadow =
+        "0 8px 32px rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.1)";
     });
 
     // Click to expand
@@ -179,10 +202,11 @@ function containsMedia(el) {
     box.style.fontSize = "14.3px";
     box.style.lineHeight = "1.6";
 
-    // Smooth fade-in (opacity) and subtle transform transitions
+    // Smooth fade-in (opacity) and smooth transform (scale/position) transitions
     box.style.opacity = isMinimized ? "0" : "1";
     box.style.visibility = isMinimized ? "hidden" : "visible";
-    box.style.transition = "all 0.6s cubic-bezier(0.4,0,0.2,1)";
+    box.style.transition =
+      "transform 420ms cubic-bezier(0.2,0.9,0.2,1), opacity 320ms cubic-bezier(0.2,0.9,0.2,1)";
     box.style.pointerEvents = "auto";
     box.style.willChange = "opacity, transform";
     box.style.overflow = "hidden";
@@ -280,7 +304,7 @@ function containsMedia(el) {
         </div>
         <strong style="color: rgba(255, 255, 255, 0.95); font-weight: 600; font-size: 16px; flex: 1; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); letter-spacing: 0.3px;">Reply GPT</strong>
         <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
-          <button id="msghelp-manslater-btn" class="msghelp-manslater-btn" style="appearance:none;border:1px solid rgba(255,255,255,0.14);background:transparent;color:rgba(255,255,255,0.9);padding:6px 10px;border-radius:12px;font-size:12px;cursor:pointer;">Manslater: Off</button>
+          <button id="msghelp-manslater-toggle" style="appearance:none;border:1px solid rgba(255,255,255,0.14);background:transparent;color:rgba(255,255,255,0.9);padding:6px 10px;border-radius:12px;font-size:12px;cursor:pointer;transition:all 0.18s ease;">Women: Off</button>
         </div>
         <div style="display: flex; gap: 4px;">
           <button id="msghelp-minimize" style="background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.2); cursor: pointer; padding: 6px; color: rgba(255, 255, 255, 0.8); font-size: 16px; line-height: 1; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 12px; backdrop-filter: blur(10px); font-weight: 300;" title="Minimize">−</button>
@@ -288,9 +312,8 @@ function containsMedia(el) {
         </div>
       </div>
       <div id="msghelp-suggestions-container">
-        <div style="color: rgba(255, 255, 255, 0.6); font-style: italic; font-size: 14px; text-align: center; padding: 12px;">
-          <div style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.6); animation: msghelp-pulse-glow 2s ease-in-out infinite; margin-right: 8px;"></div>
-          Waiting for suggestions...
+        <div style="display:flex;align-items:center;gap:10px;padding:4px 0;">
+          <span style="color:#8696a0;font-size:13.5px;">Waiting for suggestions...</span>
         </div>
       </div>
       <!-- Continue conversation footer -->
@@ -312,6 +335,37 @@ function containsMedia(el) {
           </div>
       </div>
     `;
+    // Manslater toggle logic
+    const manslaterBtn = box.querySelector("#msghelp-manslater-toggle");
+    function updateManslaterBtnUI(enabled) {
+      if (!manslaterBtn) return;
+      manslaterBtn.textContent = enabled ? "Manslater: On" : "Manslater: Off";
+      manslaterBtn.style.background = enabled
+        ? "linear-gradient(90deg, rgba(255,105,180,0.18), rgba(255,120,200,0.12))"
+        : "transparent";
+      manslaterBtn.style.borderColor = enabled
+        ? "rgba(255,105,180,0.6)"
+        : "rgba(255,255,255,0.14)";
+      manslaterBtn.style.color = enabled ? "#fff" : "rgba(255,255,255,0.9)";
+      manslaterBtn.style.boxShadow = enabled
+        ? "0 6px 18px rgba(255,105,180,0.08)"
+        : "none";
+    }
+    // Initialize manslater toggle state from storage
+    chrome.storage.local.get(["manslaterMode"], ({ manslaterMode = false }) => {
+      updateManslaterBtnUI(!!manslaterMode);
+    });
+    manslaterBtn.addEventListener("click", () => {
+      chrome.storage.local.get(
+        ["manslaterMode"],
+        ({ manslaterMode = false }) => {
+          const enabled = !manslaterMode;
+          chrome.storage.local.set({ manslaterMode: enabled }, () => {
+            updateManslaterBtnUI(enabled);
+          });
+        }
+      );
+    });
 
     // Add minimize button functionality (create if missing)
     let minimizeBtn = box.querySelector("#msghelp-minimize");
@@ -372,13 +426,13 @@ function containsMedia(el) {
       closeBtn.style.background = "rgba(255, 255, 255, 0.25)";
       closeBtn.style.borderColor = "rgba(255, 255, 255, 0.4)";
       closeBtn.style.color = "rgba(255, 255, 255, 1)";
-      closeBtn.style.transform = "rotate(90deg) scale(1.05)";
+      closeBtn.style.transform = "scale(1.05)";
     });
     closeBtn.addEventListener("mouseleave", () => {
       closeBtn.style.background = "rgba(255, 255, 255, 0.12)";
       closeBtn.style.borderColor = "rgba(255, 255, 255, 0.2)";
       closeBtn.style.color = "rgba(255, 255, 255, 0.8)";
-      closeBtn.style.transform = "rotate(0deg) scale(1)";
+      closeBtn.style.transform = "scale(1)";
     });
     closeBtn.addEventListener("click", () => {
       box.style.opacity = "0";
@@ -453,54 +507,135 @@ function containsMedia(el) {
     }
   }
 
-  // Function to minimize the floating box
+  // Function to minimize the floating box with Apple-like animation
   function minimizeFloatingBox() {
     isMinimized = true;
     const box = document.getElementById("msghelp-floating-box");
     const bubble = document.getElementById("msghelp-minimized-bubble");
 
-    // Prepare bubble to show
+    // Add Apple-like animation styles if not present
+    if (!document.getElementById("msghelp-apple-animations")) {
+      const style = document.createElement("style");
+      style.id = "msghelp-apple-animations";
+      style.textContent = `
+        @keyframes msghelp-minimize-spring {
+          0% { 
+            transform: translateX(-50%) translateY(0px) scale(1); 
+            opacity: 1; 
+          }
+          25% { 
+            transform: translateX(-50%) translateY(-8px) scale(0.98); 
+            opacity: 0.95; 
+          }
+          50% { 
+            transform: translateX(-50%) translateY(-20px) scale(0.92); 
+            opacity: 0.7; 
+          }
+          75% { 
+            transform: translateX(-50%) translateY(-35px) scale(0.85); 
+            opacity: 0.4; 
+          }
+          100% { 
+            transform: translateX(-50%) translateY(-45px) scale(0.8); 
+            opacity: 0; 
+          }
+        }
+        
+        @keyframes msghelp-bubble-appear {
+          0% { 
+            transform: translateY(-50%) scale(0.1); 
+            opacity: 0; 
+          }
+          50% { 
+            transform: translateY(-50%) scale(1.15); 
+            opacity: 0.8; 
+          }
+          100% { 
+            transform: translateY(-50%) scale(1); 
+            opacity: 1; 
+          }
+        }
+        
+        @keyframes msghelp-expand-spring {
+          0% { 
+            transform: translateX(-50%) translateY(-45px) scale(0.8); 
+            opacity: 0; 
+          }
+          30% { 
+            transform: translateX(-50%) translateY(-10px) scale(1.03); 
+            opacity: 0.7; 
+          }
+          60% { 
+            transform: translateX(-50%) translateY(3px) scale(0.99); 
+            opacity: 0.9; 
+          }
+          85% { 
+            transform: translateX(-50%) translateY(-1px) scale(1.01); 
+            opacity: 0.98; 
+          }
+          100% { 
+            transform: translateX(-50%) translateY(0px) scale(1); 
+            opacity: 1; 
+          }
+        }
+        
+        @keyframes msghelp-bubble-disappear {
+          0% { 
+            transform: translateY(-50%) scale(1); 
+            opacity: 1; 
+          }
+          30% { 
+            transform: translateY(-50%) scale(0.9); 
+            opacity: 0.7; 
+          }
+          70% { 
+            transform: translateY(-50%) scale(0.6); 
+            opacity: 0.3; 
+          }
+          100% { 
+            transform: translateY(-50%) scale(0.1); 
+            opacity: 0; 
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // Prepare bubble to show with spring animation
     if (bubble) {
       bubble.style.display = "flex";
-      bubble.style.pointerEvents = "none"; // enable after animation
-      // force reflow to ensure transition starts
-      void bubble.offsetWidth;
-      bubble.style.opacity = "1";
+      bubble.style.pointerEvents = "none";
+      bubble.style.animation =
+        "msghelp-bubble-appear 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards";
       bubble.style.visibility = "visible";
-      bubble.style.transform = "translateY(-50%) scale(1)";
     }
 
     if (box) {
-      // Stop float animation and animate out
+      // Stop float animation and animate out with spring effect
       box.style.animationName = "none";
-      box.style.pointerEvents = "none"; // prevent interaction during hide
-      // ensure transitions are set
-      box.style.transition =
-        "transform 420ms cubic-bezier(0.2,0.9,0.2,1), opacity 320ms cubic-bezier(0.2,0.9,0.2,1)";
-      // trigger transform/opacity change
-      box.style.opacity = "0";
-      box.style.transform = "translateX(-50%) translateY(-40px) scale(0.92)";
+      box.style.pointerEvents = "none";
+      box.style.animation =
+        "msghelp-minimize-spring 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards";
 
-      // After transition, hide fully
-      const onBoxTransitionEnd = (ev) => {
-        if (ev.propertyName !== "opacity" && ev.propertyName !== "transform")
-          return;
+      // After animation, hide fully
+      const onBoxAnimationEnd = () => {
         box.style.visibility = "hidden";
-        box.removeEventListener("transitionend", onBoxTransitionEnd);
+        box.style.animation = "none";
+        box.removeEventListener("animationend", onBoxAnimationEnd);
       };
-      box.addEventListener("transitionend", onBoxTransitionEnd);
+      box.addEventListener("animationend", onBoxAnimationEnd);
     }
 
     if (bubble) {
       // Make bubble interactive after its animation completes
-      const onBubbleEnd = (ev) => {
-        if (ev.propertyName !== "transform" && ev.propertyName !== "opacity")
-          return;
+      const onBubbleAnimationEnd = () => {
         bubble.style.pointerEvents = "auto";
-        bubble.removeEventListener("transitionend", onBubbleEnd);
+        bubble.style.animation = "none";
+        bubble.removeEventListener("animationend", onBubbleAnimationEnd);
       };
-      bubble.addEventListener("transitionend", onBubbleEnd);
+      bubble.addEventListener("animationend", onBubbleAnimationEnd);
     }
+
     // Persist minimized state
     try {
       chrome.storage.local.set({ msghelpIsMinimized: true });
@@ -509,26 +644,25 @@ function containsMedia(el) {
     }
   }
 
-  // Function to expand the floating box from minimized state
+  // Function to expand the floating box from minimized state with Apple-like animation
   function expandFloatingBox() {
     isMinimized = false;
     const box = document.getElementById("msghelp-floating-box");
     const bubble = document.getElementById("msghelp-minimized-bubble");
 
+    // Hide bubble with spring animation
     if (bubble) {
-      // hide bubble with smooth transition and disable pointer events immediately
       bubble.style.pointerEvents = "none";
-      bubble.style.opacity = "0";
-      bubble.style.transform = "translateY(-50%) scale(0.3)";
-      bubble.style.visibility = "hidden";
-      // ensure it's removed from layout after transition
-      const onBubbleHide = (ev) => {
-        if (ev.propertyName !== "opacity" && ev.propertyName !== "transform")
-          return;
+      bubble.style.animation =
+        "msghelp-bubble-disappear 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards";
+
+      const onBubbleAnimationEnd = () => {
         bubble.style.display = "none";
-        bubble.removeEventListener("transitionend", onBubbleHide);
+        bubble.style.visibility = "hidden";
+        bubble.style.animation = "none";
+        bubble.removeEventListener("animationend", onBubbleAnimationEnd);
       };
-      bubble.addEventListener("transitionend", onBubbleHide);
+      bubble.addEventListener("animationend", onBubbleAnimationEnd);
     }
 
     if (box) {
@@ -536,19 +670,23 @@ function containsMedia(el) {
       box.style.display = "block";
       box.style.visibility = "visible";
       box.style.pointerEvents = "auto";
-      // force reflow
-      void box.offsetWidth;
-      box.style.transition =
-        "transform 420ms cubic-bezier(0.2,0.9,0.2,1), opacity 320ms cubic-bezier(0.2,0.9,0.2,1)";
-      box.style.opacity = "1";
-      box.style.transform = "translateX(-50%) translateY(-20px) scale(1)";
-      // resume float after a small delay so the entrance feels natural
-      setTimeout(() => {
+
+      // Apply spring expand animation
+      box.style.animation =
+        "msghelp-expand-spring 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards";
+
+      // Resume float after animation completes
+      const onBoxAnimationEnd = () => {
         try {
-          box.style.animationName = "msghelp-float";
+          box.style.animation = "msghelp-float 3s ease-in-out infinite";
+          box.style.transform = "translateX(-50%) translateY(0px)";
+          box.style.opacity = "1";
         } catch (e) {}
-      }, 560);
+        box.removeEventListener("animationend", onBoxAnimationEnd);
+      };
+      box.addEventListener("animationend", onBoxAnimationEnd);
     }
+
     // Persist expanded state
     try {
       chrome.storage.local.set({ msghelpIsMinimized: false });
@@ -574,90 +712,6 @@ function containsMedia(el) {
       document.head.appendChild(cs);
     }
 
-    // Inject manslater-specific CSS (pink theme) if not present
-    if (!document.getElementById("msghelp-manslater-style")) {
-      const ms = document.createElement("style");
-      ms.id = "msghelp-manslater-style";
-      ms.textContent = `
-        #msghelp-floating-box.msghelp-manslater {
-          background: linear-gradient(180deg, rgba(255,182,193,0.12), rgba(255,105,180,0.06));
-          border-color: rgba(255,105,180,0.5) !important;
-          box-shadow: 0 12px 48px rgba(255,105,180,0.08), inset 0 1px 0 rgba(255,255,255,0.06);
-        }
-        #msghelp-floating-box.msghelp-manslater .msghelp-suggestion {
-          background: rgba(255,182,193,0.08) !important;
-          border-color: rgba(255,105,180,0.18) !important;
-        }
-        /* manslater status element removed - no status text displayed beneath the button */
-        .msghelp-manslater-btn {
-          transition: all 0.18s ease;
-          opacity: 0.95;
-        }
-        .msghelp-manslater-btn.active {
-          background: linear-gradient(90deg, rgba(255,105,180,0.18), rgba(255,120,200,0.12));
-          border-color: rgba(255,105,180,0.6) !important;
-          color: #fff !important;
-          box-shadow: 0 6px 18px rgba(255,105,180,0.08);
-          transform: translateY(-1px);
-        }
-      `;
-      document.head.appendChild(ms);
-    }
-
-    // Hook up the manslater toggle (button) to storage and update UI
-    const mansButton = box.querySelector("#msghelp-manslater-btn");
-
-    function applyManslaterMode(enabled) {
-      try {
-        if (enabled) {
-          box.classList.add("msghelp-manslater");
-        } else {
-          box.classList.remove("msghelp-manslater");
-        }
-      } catch (e) {
-        console.warn("[CONTENT] applyManslaterMode error", e);
-      }
-    }
-
-    if (mansButton) {
-      // Initialize from storage
-      chrome.storage.local.get(
-        ["manslaterMode"],
-        ({ manslaterMode = false }) => {
-          try {
-            if (manslaterMode) {
-              mansButton.classList.add("active");
-              mansButton.textContent = "Manslater: On";
-            } else {
-              mansButton.classList.remove("active");
-              mansButton.textContent = "Manslater: Off";
-            }
-            applyManslaterMode(!!manslaterMode);
-          } catch (e) {}
-        }
-      );
-
-      mansButton.addEventListener("click", () => {
-        // Toggle current state
-        chrome.storage.local.get(
-          ["manslaterMode"],
-          ({ manslaterMode = false }) => {
-            const enabled = !manslaterMode;
-            chrome.storage.local.set({ manslaterMode: enabled }, () => {
-              if (enabled) {
-                mansButton.classList.add("active");
-                mansButton.textContent = "Manslater: On";
-              } else {
-                mansButton.classList.remove("active");
-                mansButton.textContent = "Manslater: Off";
-              }
-              applyManslaterMode(enabled);
-            });
-          }
-        );
-      });
-    }
-
     // Trigger animation after a short delay
     setTimeout(() => {
       box.style.opacity = "1";
@@ -667,19 +721,133 @@ function containsMedia(el) {
     console.log("[CONTENT] Floating box injected successfully");
   }
 
-  // Update suggestions in floating box
-  function updateFloatingSuggestions(suggestions) {
-    console.log(
-      "[CONTENT] updateFloatingSuggestions called with:",
-      suggestions
-    );
-    const box = document.getElementById("msghelp-floating-box");
-    if (!box) {
-      console.log("[CONTENT] Floating box not found, injecting...");
-      injectFloatingBox();
-      return updateFloatingSuggestions(suggestions); // Retry after injection
+  // Function to animate floating box size changes with Apple-like spring animation
+  function animateContentResize(element, callback) {
+    if (!element) return;
+
+    // Add resize animation styles if not present
+    if (!document.getElementById("msghelp-resize-animations")) {
+      const style = document.createElement("style");
+      style.id = "msghelp-resize-animations";
+      style.textContent = `
+        .msghelp-resizing {
+          transition: height 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+                      width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                      max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        
+        .msghelp-content-changing {
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        
+        @keyframes msghelp-content-pop {
+          0% { 
+            transform: scale(1); 
+          }
+          30% { 
+            transform: scale(1.02); 
+          }
+          100% { 
+            transform: scale(1); 
+          }
+        }
+        
+        .msghelp-content-pop {
+          animation: msghelp-content-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+      `;
+      document.head.appendChild(style);
     }
 
+    // Store current dimensions
+    const currentHeight = element.offsetHeight;
+    const currentWidth = element.offsetWidth;
+
+    // Add resizing class for smooth transitions
+    element.classList.add("msghelp-resizing");
+
+    // Execute the content change
+    callback();
+
+    // Force layout recalculation
+    const newHeight = element.offsetHeight;
+    const newWidth = element.offsetWidth;
+
+    // Only animate if there's a significant size change
+    const heightDiff = Math.abs(newHeight - currentHeight);
+    const widthDiff = Math.abs(newWidth - currentWidth);
+
+    if (heightDiff > 5 || widthDiff > 5) {
+      // Add a subtle pop animation for content changes
+      element.classList.add("msghelp-content-pop");
+
+      // Remove animation classes after animation completes
+      setTimeout(() => {
+        element.classList.remove("msghelp-resizing", "msghelp-content-pop");
+      }, 450);
+
+      console.log(
+        `[CONTENT] Animated resize: ${currentWidth}x${currentHeight} → ${newWidth}x${newHeight}`
+      );
+    } else {
+      // Remove resizing class immediately if no significant change
+      element.classList.remove("msghelp-resizing");
+    }
+  }
+
+  // Update suggestions in floating box
+  let suggestionCooldown = false;
+  let lastSuggestionTime = 0;
+  let updateCallCount = 0; // Track how many times this is called
+  let pendingUpdateTimeout = null; // For debouncing
+
+  function updateFloatingSuggestions(suggestions) {
+    updateCallCount++;
+    console.log(
+      `[CONTENT] updateFloatingSuggestions called (#${updateCallCount}) with:`,
+      suggestions
+    );
+
+    // Clear any pending update to prevent duplicates
+    if (pendingUpdateTimeout) {
+      clearTimeout(pendingUpdateTimeout);
+      console.log("[CONTENT] Cancelled pending duplicate update");
+    }
+
+    // Debounce: wait 100ms before actually updating to catch rapid duplicates
+    pendingUpdateTimeout = setTimeout(() => {
+      actuallyUpdateSuggestions(suggestions);
+      pendingUpdateTimeout = null;
+    }, 100);
+  }
+
+  function actuallyUpdateSuggestions(suggestions) {
+    console.log("[CONTENT] Actually updating suggestions with:", suggestions);
+
+    // Suggestion cooldown: only allow update every 2 seconds
+    const now = Date.now();
+    if (suggestionCooldown && now - lastSuggestionTime < 2000) {
+      console.log("[CONTENT] Suggestion update locked (cooldown)");
+      return;
+    }
+    suggestionCooldown = true;
+    lastSuggestionTime = now;
+    setTimeout(() => {
+      suggestionCooldown = false;
+    }, 2000);
+    const box = document.getElementById("msghelp-floating-box");
+    if (!box) {
+      // Only inject if not already in progress
+      if (!isInjecting) {
+        console.log("[CONTENT] Floating box not found, injecting...");
+        injectFloatingBox();
+      } else {
+        console.log(
+          "[CONTENT] Floating box not found, but injection in progress"
+        );
+      }
+      return; // Do not immediately retry to avoid race/loop
+    }
     const container = box.querySelector("#msghelp-suggestions-container");
     if (!container) {
       console.log("[CONTENT] Suggestions container not found");
@@ -694,21 +862,14 @@ function containsMedia(el) {
           "[CONTENT] In conversation mode — skipping suggestion render"
         );
         // ensure suggestions container is hidden while in convo mode
-        const c = box.querySelector("#msghelp-suggestions-container");
-        if (c) c.style.display = "none";
+        container.style.display = "none";
         return;
+      } else {
+        container.style.display = "block";
       }
     } catch (e) {}
 
-    // Show the box with animation if hidden
-    if (box.style.display === "none" || box.style.opacity === "0") {
-      box.style.display = "block";
-      setTimeout(() => {
-        box.style.opacity = "1";
-        box.style.transform = "translateX(-50%) translateY(0)";
-      }, 50);
-    }
-
+    // Only update the suggestions container, not the whole box
     if (!suggestions || suggestions.length === 0) {
       container.innerHTML = `
         <div style="color: rgba(255, 255, 255, 0.5); font-style: italic; font-size: 14px; text-align: center; padding: 12px;">
@@ -716,7 +877,6 @@ function containsMedia(el) {
           No suggestions available
         </div>
       `;
-      // Keep the box visible even if no suggestions
       console.log("[CONTENT] No suggestions to display");
       return;
     }
@@ -787,8 +947,11 @@ function containsMedia(el) {
       document.head.appendChild(style);
     }
 
-    container.innerHTML = suggestionsList;
-    console.log("[CONTENT] Floating box updated and shown");
+    // Animate the content change for smooth resizing
+    animateContentResize(box, () => {
+      container.innerHTML = suggestionsList;
+    });
+    console.log("[CONTENT] Suggestions container updated");
 
     // Add click handlers to suggestions
     container.querySelectorAll(".msghelp-suggestion").forEach((item) => {
@@ -874,6 +1037,53 @@ function containsMedia(el) {
     });
   }
 
+  // Show waiting message when last message was outgoing
+  function showWaitingForIncomingMessage() {
+    try {
+      // Ensure floating box exists
+      let box = document.getElementById("msghelp-floating-box");
+      if (!box) {
+        injectFloatingBox();
+        box = document.getElementById("msghelp-floating-box");
+      }
+
+      if (box) {
+        const container = box.querySelector("#msghelp-suggestions-container");
+        if (container) {
+          // Animate the content change for smooth resizing
+          animateContentResize(box, () => {
+            container.innerHTML = `
+              <div style="display: flex; align-items: center; gap: 12px; padding: 16px 8px; text-align: center;">
+                <div style="flex: 1;">
+                  <div style="color: rgba(255, 255, 255, 0.9); font-size: 14px; font-weight: 500; margin-bottom: 4px;">
+                    Waiting for reply...
+                  </div>
+                  <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; line-height: 1.4;">
+                    Don't ruin your self respect ,soldier 💬
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+        }
+
+        // Show the box with animation if hidden (but not if minimized)
+        if (
+          !isMinimized &&
+          (box.style.display === "none" || box.style.opacity === "0")
+        ) {
+          box.style.display = "block";
+          setTimeout(() => {
+            box.style.opacity = "1";
+            box.style.transform = "translateX(-50%) translateY(0)";
+          }, 50);
+        }
+      }
+    } catch (e) {
+      console.warn("[CONTENT] Failed to show waiting message:", e);
+    }
+  }
+
   // Append a message to the small conversation log inside the floating box
   function appendToConvo(role, text, convoLogEl) {
     try {
@@ -922,29 +1132,39 @@ function containsMedia(el) {
             ' <span style="color:#8696a0;font-size:13.5px;">Thinking...</span></div>';
       }
 
-      chrome.runtime.sendMessage(
-        {
-          type: "REQUEST_SUGGESTION",
-          messages: [msgObj],
-        },
-        (resp) => {
-          if (chrome.runtime.lastError) {
-            const errText = "No response from backend";
-            appendToConvo("assistant", errText, convoLogEl);
-            // also show in suggestions container
-            const b = document.getElementById("msghelp-floating-box");
-            if (b) {
-              const container = b.querySelector(
-                "#msghelp-suggestions-container"
-              );
-              if (container)
-                container.innerHTML = `<div style=\"color: rgba(255, 255, 255, 0.5); font-style: italic; font-size: 14px; text-align: center; padding: 12px;\">${escapeHtml(
-                  errText
-                )}</div>`;
+      // Use correct endpoint for manslater mode
+      chrome.storage.local.get(
+        ["manslaterMode"],
+        ({ manslaterMode = false }) => {
+          const endpoint = manslaterMode
+            ? "https://msghelp.onrender.com/suggest-reply"
+            : "https://msghelp.onrender.com/suggest-reply-general";
+          chrome.runtime.sendMessage(
+            {
+              type: "REQUEST_SUGGESTION",
+              messages: [msgObj],
+              endpoint: endpoint,
+            },
+            (resp) => {
+              if (chrome.runtime.lastError) {
+                const errText = "No response from backend";
+                appendToConvo("assistant", errText, convoLogEl);
+                // also show in suggestions container
+                const b = document.getElementById("msghelp-floating-box");
+                if (b) {
+                  const container = b.querySelector(
+                    "#msghelp-suggestions-container"
+                  );
+                  if (container)
+                    container.innerHTML = `<div style=\"color: rgba(255, 255, 255, 0.5); font-style: italic; font-size: 14px; text-align: center; padding: 12px;\">${escapeHtml(
+                      errText
+                    )}</div>`;
+                }
+              } else {
+                // response will come via SHOW_SUGGESTIONS and be appended there
+              }
             }
-          } else {
-            // response will come via SHOW_SUGGESTIONS and be appended there
-          }
+          );
         }
       );
     } catch (e) {
@@ -1062,8 +1282,19 @@ function containsMedia(el) {
     }
   }
 
-  // Inject floating box when content script loads
-  setTimeout(injectFloatingBox, 1000);
+  // Inject floating box when content script loads (with delay to avoid race conditions)
+  let initialInjectionScheduled = false;
+  function scheduleInitialInjection() {
+    if (initialInjectionScheduled) return;
+    initialInjectionScheduled = true;
+    setTimeout(() => {
+      console.log("[CONTENT] Running initial floating box injection");
+      injectFloatingBox();
+    }, 1000);
+  }
+
+  // Start initial injection
+  scheduleInitialInjection();
 
   function seen(key) {
     return recent.indexOf(key) !== -1;
@@ -1123,61 +1354,9 @@ function containsMedia(el) {
 
   // Backwards-compatible active chat info extractor. Uses the title extractor above
   // and falls back to URL hash when necessary.
-  function detectChatChange() {
-    const info = getActiveChatInfo();
-    const newSessionId = info.sessionId;
 
-    if (currentChatSession !== newSessionId && isInitialized) {
-      console.log(
-        `[CONTENT] 🔄 Chat changed from "${currentChatSession}" to "${newSessionId}"`
-      );
-      currentChatSession = newSessionId;
-
-      // Reset state for new chat
-      isInitialized = false;
-      existingMessages.clear();
-      recent.length = 0;
-
-      // Re-inject floating UI so minimized state persists across session changes
-      try {
-        injectFloatingBox();
-      } catch (e) {
-        console.warn(
-          "[CONTENT] injectFloatingBox failed during chat change",
-          e
-        );
-      }
-
-      // Clear any pending context loading
-      if (contextLoadingTimeout) {
-        clearTimeout(contextLoadingTimeout);
-      }
-
-      if (!sessionsWithContext.has(newSessionId)) {
-        contextLoadingTimeout = setTimeout(() => {
-          scanLast5Messages();
-          sessionsWithContext.add(newSessionId); // Mark context as saved
-          // Enable new message capture after context loads
-          setTimeout(() => {
-            isInitialized = true;
-            console.log("[CONTENT] 🔄 Now capturing new messages only");
-            // Request suggestion after context is loaded
-            requestSuggestion();
-          }, 1000);
-        }, 1500); // Wait for chat to fully load
-      } else {
-        // If context already saved, just enable new message capture
-        setTimeout(() => {
-          isInitialized = true;
-          console.log(
-            "[CONTENT] 🔄 Now capturing new messages only (context already loaded)"
-          );
-          // Request suggestion after context is loaded
-          requestSuggestion();
-        }, 500);
-      }
-    }
-  }
+  // Remove duplicate function definition - use the one above
+  // ...existing code...
   // Attempt to retrieve the raw `data-pre-plain-text` attribute from a node
   function getPrePlainTextAttribute(el) {
     let node = el;
@@ -1485,17 +1664,88 @@ function containsMedia(el) {
     );
     saveMessage(msgObj);
 
-    // Auto-suggest replies for incoming messages
+    // Auto-suggest replies for incoming messages (debounced)
     if (guessDirection(container) === "incoming") {
-      setTimeout(() => {
+      // Prevent duplicate suggestions for the same message
+      const messageKey = `${text.substring(0, 50)}_${parsedTs}`;
+      if (window.lastProcessedMessage === messageKey) {
+        console.log(
+          "[CONTENT] Skipping duplicate suggestion request for same message"
+        );
+        return;
+      }
+      window.lastProcessedMessage = messageKey;
+
+      if (window.msghelpSuggestTimeout)
+        clearTimeout(window.msghelpSuggestTimeout);
+      window.msghelpSuggestTimeout = setTimeout(() => {
         requestSuggestion();
-      }, 1000); // Small delay to let the message be saved
+      }, 900); // Debounce: only suggest after 900ms of no new incoming
+    } else {
+      // For outgoing messages, check if there are any incoming messages in last 5
+      console.log(
+        "[CONTENT] Outgoing message detected - checking recent message history"
+      );
+      hasRecentIncomingMessages().then((hasIncoming) => {
+        if (!hasIncoming) {
+          console.log(
+            "[CONTENT] No incoming messages in last 5 - showing waiting message"
+          );
+          showWaitingForIncomingMessage();
+        } else {
+          console.log(
+            "[CONTENT] Found incoming messages in recent history - no waiting message needed"
+          );
+        }
+      });
     }
   }
 
-  // Request suggestion from popup/backend
+  // Check if there are any incoming messages in recent history
+  function hasRecentIncomingMessages() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(["messages"], ({ messages = [] } = {}) => {
+        const info = getActiveChatInfo();
+        if (!info.sessionId) {
+          resolve(false);
+          return;
+        }
+
+        // Get messages for current session
+        const sessionMessages = messages.filter(
+          (m) => m.sessionId === info.sessionId
+        );
+
+        // Check last 5 messages for any incoming
+        const last5 = sessionMessages.slice(-5);
+        const hasIncoming = last5.some((msg) => msg.type === "incoming");
+
+        console.log(
+          `[CONTENT] Checking recent messages - found ${
+            hasIncoming ? "incoming" : "no incoming"
+          } in last ${last5.length} messages`
+        );
+        resolve(hasIncoming);
+      });
+    });
+  }
+
+  // Request suggestion from popup/backend, using manslater toggle for endpoint
   function requestSuggestion() {
     try {
+      // Rate limiting: don't make API calls more than once every 2 seconds
+      const now = Date.now();
+      if (
+        window.lastSuggestionRequest &&
+        now - window.lastSuggestionRequest < 2000
+      ) {
+        console.log(
+          "[CONTENT] Rate limiting: skipping suggestion request (too soon)"
+        );
+        return;
+      }
+      window.lastSuggestionRequest = now;
+
       // Don't fetch suggestions when minimized
       if (isMinimized) {
         console.log("[CONTENT] Skipping suggestion request - box is minimized");
@@ -1512,10 +1762,13 @@ function containsMedia(el) {
       if (box) {
         const container = box.querySelector("#msghelp-suggestions-container");
         if (container) {
-          container.innerHTML =
-            '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;">' +
-            '<span class="msghelp-spinner" style="display:inline-block;width:16px;height:16px;border:2px solid rgba(37, 211, 102, 0.3);border-top:2px solid #25d366;border-radius:50%;animation:msghelp-spin 0.8s linear infinite;"></span>' +
-            ' <span style="color:#8696a0;font-size:13.5px;">Generating reply...</span></div>';
+          // Animate the content change for smooth resizing
+          animateContentResize(box, () => {
+            container.innerHTML =
+              '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;">' +
+              '<span class="msghelp-spinner" style="display:inline-block;width:16px;height:16px;border:2px solid rgba(37, 211, 102, 0.3);border-top:2px solid #25d366;border-radius:50%;animation:msghelp-spin 0.8s linear infinite;"></span>' +
+              ' <span style="color:#8696a0;font-size:13.5px;">Generating reply...</span></div>';
+          });
           // Add spinner animation style if not present
           if (!document.getElementById("msghelp-spinner-style")) {
             const style = document.createElement("style");
@@ -1537,31 +1790,39 @@ function containsMedia(el) {
           }, 50);
         }
       }
-      chrome.storage.local.get(["messages"], ({ messages = [] }) => {
-        if (messages.length === 0) return;
-
-        // Send request to background or popup for suggestion
-        chrome.runtime.sendMessage(
-          {
-            type: "REQUEST_SUGGESTION",
-            messages: messages.slice(0, 5),
-          },
-          (resp) => {
-            // If background didn't respond (e.g. error), ensure box shows 'No suggestions'
-            if (chrome.runtime.lastError) {
-              const b = document.getElementById("msghelp-floating-box");
-              if (b) {
-                const container = b.querySelector(
-                  "#msghelp-suggestions-container"
-                );
-                if (container)
-                  container.innerHTML =
-                    '<div style="color: rgba(255, 255, 255, 0.5); font-style: italic; font-size: 14px; text-align: center; padding: 12px;">No suggestions available</div>';
+      // Read manslaterMode and messages, then send to correct endpoint
+      chrome.storage.local.get(
+        ["messages", "manslaterMode"],
+        ({ messages = [], manslaterMode = false }) => {
+          if (messages.length === 0) return;
+          // Use the correct endpoint based on manslaterMode
+          const endpoint = manslaterMode
+            ? "https://msghelp.onrender.com/suggest-reply"
+            : "https://msghelp.onrender.com/suggest-reply-general";
+          // Send request to background or popup for suggestion, passing endpoint
+          chrome.runtime.sendMessage(
+            {
+              type: "REQUEST_SUGGESTION",
+              messages: messages.slice(0, 5),
+              endpoint: endpoint,
+            },
+            (resp) => {
+              // If background didn't respond (e.g. error), ensure box shows 'No suggestions'
+              if (chrome.runtime.lastError) {
+                const b = document.getElementById("msghelp-floating-box");
+                if (b) {
+                  const container = b.querySelector(
+                    "#msghelp-suggestions-container"
+                  );
+                  if (container)
+                    container.innerHTML =
+                      '<div style="color: rgba(255, 255, 255, 0.5); font-style: italic; font-size: 14px; text-align: center; padding: 12px;">No suggestions available</div>';
+                }
               }
             }
-          }
-        );
-      });
+          );
+        }
+      );
     } catch (e) {
       console.log("[CONTENT] Could not request suggestion:", e);
     }
@@ -1695,8 +1956,32 @@ function containsMedia(el) {
           ];
           const capped = capMessagesPerSession(updated, MAX_HISTORY);
           chrome.storage.local.set({ messages: capped }, () => {
-            // After context is saved, request a suggestion
-            requestSuggestion();
+            // Check if there are any incoming messages in the last 5 messages
+            const hasIncomingInLast5 = last5.some(
+              (msg) => msg.type === "incoming"
+            );
+            const lastMessage = last5[last5.length - 1];
+
+            if (
+              hasIncomingInLast5 &&
+              lastMessage &&
+              lastMessage.type === "incoming"
+            ) {
+              console.log(
+                "[CONTENT] Found incoming messages in last 5, and last message is incoming - requesting suggestion"
+              );
+              requestSuggestion();
+            } else if (!hasIncomingInLast5) {
+              console.log(
+                "[CONTENT] No incoming messages in last 5 messages - showing waiting message"
+              );
+              // Show waiting message only if ALL last 5 messages are outgoing
+              showWaitingForIncomingMessage();
+            } else {
+              console.log(
+                "[CONTENT] Last message was outgoing but there are incoming messages in last 5 - no action needed"
+              );
+            }
           });
         } catch (e) {
           console.warn("[CONTENT] context save error", e);
@@ -1705,6 +1990,17 @@ function containsMedia(el) {
     } else {
       console.log("[CONTENT] 📖 No messages found in chat");
     }
+  }
+
+  // Debounced version of detectChatChange to prevent excessive calls
+  let chatChangeTimeout;
+  function debouncedDetectChatChange() {
+    if (chatChangeTimeout) {
+      clearTimeout(chatChangeTimeout);
+    }
+    chatChangeTimeout = setTimeout(() => {
+      detectChatChange();
+    }, 100); // Only check for chat changes every 100ms
   }
 
   // Detect when user switches to a different chat
@@ -1729,12 +2025,21 @@ function containsMedia(el) {
       }
 
       // Re-inject floating UI so minimized state persists across session changes
-      try {
-        injectFloatingBox();
-      } catch (e) {
-        console.warn(
-          "[CONTENT] injectFloatingBox failed during chat change",
-          e
+      // Only inject if no box exists or if injection is not in progress
+      const existingBox = document.getElementById("msghelp-floating-box");
+      if (!existingBox && !isInjecting) {
+        try {
+          console.log("[CONTENT] Injecting floating box for chat change");
+          injectFloatingBox();
+        } catch (e) {
+          console.warn(
+            "[CONTENT] injectFloatingBox failed during chat change",
+            e
+          );
+        }
+      } else {
+        console.log(
+          "[CONTENT] Skipping injection - box exists or injection in progress"
         );
       }
 
@@ -1805,8 +2110,8 @@ function containsMedia(el) {
     console.log("[CONTENT] 👀 Monitoring for chat changes and new messages");
 
     const obs = new MutationObserver((mutations) => {
-      // Check for chat changes on any DOM mutation
-      detectChatChange();
+      // Check for chat changes on any DOM mutation (debounced)
+      debouncedDetectChatChange();
 
       // Only process new messages if initialized for current chat
       if (!isInitialized) return;
@@ -1838,86 +2143,126 @@ function containsMedia(el) {
     detectChatChange();
   }
 
-  // Message handlers for communication with popup
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type === "RESET_STATE") {
-      // Reset all state variables
-      existingMessages.clear();
-      recent.length = 0;
-      isInitialized = false;
-      currentChatSession = null;
-      if (contextLoadingTimeout) {
-        clearTimeout(contextLoadingTimeout);
-        contextLoadingTimeout = null;
-      }
-      console.log("[CONTENT] State reset complete");
-      sendResponse({ ok: true });
-      return;
-    }
-
-    if (request.type === "GET_DEBUG_INFO") {
-      // Get current state for debugging
-      chrome.storage.local.get(["messages"], ({ messages = [] }) => {
-        const debugInfo = {
-          existingMessagesCount: existingMessages.size,
-          recentCount: recent.length,
-          currentSessionId: currentChatSession?.sessionId || "None",
-          lastChatChangeTime: currentChatSession?.timestamp || "None",
-          storageCount: messages.length,
-          isInitialized: isInitialized,
-        };
-        console.log("[CONTENT] Debug info:", debugInfo);
-        sendResponse(debugInfo);
-      });
-      return true; // Indicates we'll send response asynchronously
-    }
-
-    if (request.type === "SCAN_NOW") {
-      // Force re-scan of current chat
-      scanLast5Messages(true);
-      sendResponse({ ok: true });
-      return;
-    }
-
-    if (request.type === "SHOW_SUGGESTIONS") {
-      // Update floating box with suggestions
-      console.log(
-        "[CONTENT] Received SHOW_SUGGESTIONS message:",
-        request.suggestions
-      );
-      updateFloatingSuggestions(request.suggestions);
-      // If conversation area is visible, append the model replies there as well
-      try {
-        const convo = document.getElementById("msghelp-conversation-area");
-        const convoLog = document.getElementById("msghelp-convo-log");
-        if (convo && convo.style.display !== "none" && convoLog) {
-          if (request.error) {
-            appendToConvo("assistant", String(request.error), convoLog);
-          } else if (request.suggestions && request.suggestions.length > 0) {
-            request.suggestions.forEach((s) =>
-              appendToConvo("assistant", s, convoLog)
-            );
-          }
+  // Message handlers for communication with popup (prevent duplicates)
+  if (!window.msghelpMessageListenerAdded) {
+    window.msghelpMessageListenerAdded = true;
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.type === "RESET_STATE") {
+        // Reset all state variables
+        existingMessages.clear();
+        recent.length = 0;
+        isInitialized = false;
+        currentChatSession = null;
+        if (contextLoadingTimeout) {
+          clearTimeout(contextLoadingTimeout);
+          contextLoadingTimeout = null;
         }
-      } catch (e) {
-        // ignore
+        console.log("[CONTENT] State reset complete");
+        sendResponse({ ok: true });
+        return;
       }
-      sendResponse({ ok: true });
-      return;
-    }
 
-    if (request.type === "TEST_FLOATING_BOX") {
-      // Test function to show floating box with sample suggestions
-      console.log("[CONTENT] Testing floating box with sample suggestions");
-      updateFloatingSuggestions([
-        "Test suggestion 1",
-        "Test suggestion 2",
-        "Test suggestion 3",
-      ]);
-      sendResponse({ ok: true });
-      return;
-    }
-  });
+      if (request.type === "GET_DEBUG_INFO") {
+        // Get current state for debugging
+        chrome.storage.local.get(["messages"], ({ messages = [] }) => {
+          const debugInfo = {
+            existingMessagesCount: existingMessages.size,
+            recentCount: recent.length,
+            currentSessionId: currentChatSession?.sessionId || "None",
+            lastChatChangeTime: currentChatSession?.timestamp || "None",
+            storageCount: messages.length,
+            isInitialized: isInitialized,
+          };
+          console.log("[CONTENT] Debug info:", debugInfo);
+          sendResponse(debugInfo);
+        });
+        return true; // Indicates we'll send response asynchronously
+      }
+
+      if (request.type === "SCAN_NOW") {
+        // Force re-scan of current chat
+        scanLast5Messages(true);
+        sendResponse({ ok: true });
+        return;
+      }
+
+      if (request.type === "SHOW_SUGGESTIONS") {
+        // Update floating box with suggestions
+        console.log(
+          "[CONTENT] Received SHOW_SUGGESTIONS message:",
+          request.suggestions
+        );
+
+        // Add extra debugging
+        console.log("[CONTENT] Suggestions received:", request.suggestions);
+        console.log("[CONTENT] Error in request:", request.error);
+
+        // Prevent rapid duplicate messages (within 200ms)
+        const now = Date.now();
+        if (
+          window.lastShowSuggestionsTime &&
+          now - window.lastShowSuggestionsTime < 200
+        ) {
+          console.log(
+            "[CONTENT] Ignoring duplicate SHOW_SUGGESTIONS message (too rapid)"
+          );
+          sendResponse({ ok: true });
+          return;
+        }
+        window.lastShowSuggestionsTime = now;
+
+        // Handle error case
+        if (request.error) {
+          updateFloatingSuggestions([]);
+          const box = document.getElementById("msghelp-floating-box");
+          if (box) {
+            const container = box.querySelector(
+              "#msghelp-suggestions-container"
+            );
+            if (container) {
+              container.innerHTML = `<div style="color: rgba(255, 255, 255, 0.5); font-style: italic; font-size: 14px; text-align: center; padding: 12px;">${escapeHtml(
+                request.error
+              )}</div>`;
+            }
+          }
+        } else {
+          // Update with suggestions
+          updateFloatingSuggestions(request.suggestions || []);
+        }
+
+        // If conversation area is visible, append the model replies there as well
+        try {
+          const convo = document.getElementById("msghelp-conversation-area");
+          const convoLog = document.getElementById("msghelp-convo-log");
+          if (convo && convo.style.display !== "none" && convoLog) {
+            if (request.error) {
+              appendToConvo("assistant", String(request.error), convoLog);
+            } else if (request.suggestions && request.suggestions.length > 0) {
+              request.suggestions.forEach((s) =>
+                appendToConvo("assistant", s, convoLog)
+              );
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+        sendResponse({ ok: true });
+        return;
+      }
+
+      if (request.type === "TEST_FLOATING_BOX") {
+        // Test function to show floating box with sample suggestions
+        console.log("[CONTENT] Testing floating box with sample suggestions");
+        updateFloatingSuggestions([
+          "Test suggestion 1",
+          "Test suggestion 2",
+          "Test suggestion 3",
+        ]);
+        sendResponse({ ok: true });
+        return;
+      }
+    });
+  } // End of message listener check
 
   // Start monitoring when content script loads
   startObservers();

@@ -43,7 +43,7 @@ async function handleSuggestionRequest(messages, tabId) {
     const manslaterMode = storage.manslaterMode === true;
     const endpoint = manslaterMode
       ? API_ENDPOINT
-      : "https://example.com/sample-suggest";
+      : "https://msghelp.onrender.com/suggest-reply-general";
 
     // Use a fetch helper with retries and timeout to make network more robust
     async function fetchWithRetries(

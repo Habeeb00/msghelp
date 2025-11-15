@@ -11,10 +11,9 @@
       <header class="popup-header">
         <h1>MsgHelp</h1>
         <nav class="tabs" role="tablist">
-          <button class="tab active" data-target="history" role="tab">
-            Chat History
-          </button>
-          <button class="tab" data-target="debug" role="tab">Debug</button>
+          <button class="tab active" data-target="home" role="tab">Home</button>
+          <button class="tab" data-target="history" role="tab">History</button>
+          <button class="tab" data-target="logs" role="tab">Logs</button>
           <button class="tab" data-target="config" role="tab">
             Configuration
           </button>
@@ -22,36 +21,59 @@
       </header>
 
       <main class="popup-body">
-        <section id="history" class="page active" role="tabpanel">
+        <!-- Home/Suggestions Page -->
+        <section id="home" class="page active" role="tabpanel">
           <div class="row row-top">
             <label class="toggle-label"
-              ><input id="toggle" type="checkbox" /> Enable</label
+              ><input id="toggle" type="checkbox" /> Enable Extension</label
             >
             <div id="status" class="status">Extension OFF</div>
           </div>
-
+          <div class="row row-top">
+            <label class="toggle-label"
+              ><input id="manslater-toggle" type="checkbox" /> Manslater
+              mode</label
+            >
+            <div id="manslater-status" class="status status-accent">
+              Manslater OFF
+            </div>
+          </div>
           <div class="section-header">
-            <h2>Captured messages <small id="msgCount">(0)</small></h2>
+            <h2>Suggestions</h2>
+            <div class="controls">
+              <button id="suggestReplyBtn" class="btn primary">
+                Get Suggestion
+              </button>
+            </div>
+          </div>
+          <div class="row">
+            <div id="suggestion-status" class="status">No suggestion yet.</div>
+            <select id="log-dropdown" class="btn small">
+              <option value="">Show Log...</option>
+            </select>
+          </div>
+        </section>
+
+        <!-- History Page -->
+        <section id="history" class="page" role="tabpanel">
+          <div class="section-header">
+            <h2>Message History <small id="msgCount">(0)</small></h2>
             <div class="controls">
               <button id="refresh-history" class="btn small">Refresh</button>
               <button id="clearBtn" class="btn">Clear</button>
             </div>
           </div>
-
           <div id="messagesList" class="list"></div>
-
           <div class="row row-actions">
             <button id="exportBtn" class="btn">Export JSON</button>
             <button id="scanBtn" class="btn">Scan active chat</button>
-            <button id="suggestReplyBtn" class="btn primary">
-              Suggest Reply
-            </button>
             <button id="testFloatingBtn" class="btn">Test Floating</button>
           </div>
         </section>
 
-        <section id="debug" class="page" role="tabpanel">
-          <h2>Debug</h2>
+        <!-- Logs Page -->
+        <section id="logs" class="page" role="tabpanel">
+          <h2>Logs & Debug</h2>
           <div class="debug-row">
             <label>Last action:</label>
             <div id="debug-last" class="mono">-</div>
@@ -68,15 +90,16 @@
           </div>
         </section>
 
+        <!-- Config Page -->
         <section id="config" class="page" role="tabpanel">
           <h2>Configuration</h2>
           <div class="config-row">
-            <label for="enable-suggestions">Enable suggestions</label
-            ><input id="enable-suggestions" type="checkbox" />
+            <label for="enable-suggestions">Enable suggestions</label>
+            <input id="enable-suggestions" type="checkbox" />
           </div>
           <div class="config-row">
-            <label for="max-history">Max stored messages</label
-            ><input id="max-history" type="number" min="1" max="50" value="5" />
+            <label for="max-history">Max stored messages</label>
+            <input id="max-history" type="number" min="1" max="50" value="5" />
           </div>
           <div class="section-footer">
             <button id="save-config" class="btn primary">Save</button>
