@@ -45,13 +45,47 @@ async function handleSuggestionRequest(messages, tabId) {
       ? API_ENDPOINT
       : "https://example.com/sample-suggest";
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+    // Use a fetch helper with retries and timeout to make network more robust
+    async function fetchWithRetries(
+      url,
+      opts = {},
+      attempts = 2,
+      timeoutMs = 8000
+    ) {
+      let lastErr = null;
+      for (let i = 0; i <= attempts; i++) {
+        try {
+          const controller = new AbortController();
+          const id = setTimeout(() => controller.abort(), timeoutMs);
+          const res = await fetch(url, { signal: controller.signal, ...opts });
+          clearTimeout(id);
+          return res;
+        } catch (err) {
+          lastErr = err;
+          console.warn(
+            `[BACKGROUND] fetch attempt ${i + 1} failed:`,
+            err && err.message ? err.message : err
+          );
+          // exponential backoff before retrying (skip wait after last attempt)
+          if (i < attempts)
+            await new Promise((r) => setTimeout(r, 300 * Math.pow(2, i)));
+        }
+      }
+      throw lastErr;
+    }
+
+    const response = await fetchWithRetries(
+      endpoint,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(payload),
-    });
+      2,
+      8000
+    );
 
     if (!response.ok) {
       const errMsg = `Backend error: ${response.status} ${response.statusText}`;
@@ -75,8 +109,9 @@ async function handleSuggestionRequest(messages, tabId) {
     });
   } catch (error) {
     console.error("[BACKGROUND] Error getting suggestion:", error);
-    const errMsg =
-      error && error.message ? `Error: ${error.message}` : "Unknown error";
+    const short =
+      error && error.message ? error.message : String(error || "Unknown error");
+    const errMsg = `Error fetching from ${endpoint}: ${short}`;
     // On error, notify the content script so it can present the error message
     try {
       chrome.tabs.sendMessage(tabId, {

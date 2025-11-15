@@ -533,7 +533,8 @@ function containsMedia(el) {
     container.querySelectorAll(".msghelp-suggestion").forEach((item) => {
       item.addEventListener("click", () => {
         const suggestionText = item.dataset.text;
-        copyToClipboard(suggestionText);
+        // Try to paste into WhatsApp input; fallback to clipboard if not possible
+        const pasted = pasteIntoWhatsAppInput(suggestionText);
 
         // Show feedback with clean glass success state
         item.style.background = "rgba(100, 220, 150, 0.15)";
@@ -544,16 +545,32 @@ function containsMedia(el) {
           0 4px 20px rgba(100, 220, 150, 0.2), 
           inset 0 1px 0 rgba(255, 255, 255, 0.3)
         `;
-        item.innerHTML = `
-          <div style="display: flex; align-items: center; gap: 12px; justify-content: center;">
-            <div style="width: 24px; height: 24px; border-radius: 50%; background: rgba(100, 220, 150, 0.25); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(100, 220, 150, 0.5); animation: msghelp-success-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(100, 220, 150, 1)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
+
+        if (pasted) {
+          item.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px; justify-content: center;">
+              <div style="width: 24px; height: 24px; border-radius: 50%; background: rgba(100, 220, 150, 0.25); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(100, 220, 150, 0.5); animation: msghelp-success-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(100, 220, 150, 1)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <span style="font-weight: 500; font-size: 15px;">Inserted into input</span>
             </div>
-            <span style="font-weight: 500; font-size: 15px;">Copied to clipboard!</span>
-          </div>
-        `;
+          `;
+        } else {
+          // fallback: copy to clipboard
+          copyToClipboard(suggestionText);
+          item.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px; justify-content: center;">
+              <div style="width: 24px; height: 24px; border-radius: 50%; background: rgba(100, 220, 150, 0.25); display: flex; align-items: center; justify-content: center; border: 1px solid rgba(100, 220, 150, 0.5); animation: msghelp-success-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(100, 220, 150, 1)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <span style="font-weight: 500; font-size: 15px;">Copied to clipboard!</span>
+            </div>
+          `;
+        }
 
         // Add success animation
         if (!document.getElementById("msghelp-success-animations")) {
@@ -666,6 +683,101 @@ function containsMedia(el) {
       textarea.select();
       document.execCommand("copy");
       document.body.removeChild(textarea);
+    }
+  }
+
+  // Try to paste text into WhatsApp Web's input (contenteditable) if present.
+  // Returns true on success, false otherwise.
+  function pasteIntoWhatsAppInput(text) {
+    try {
+      // Try a few common selectors for the WA input box
+      const selectors = [
+        '#main footer [contenteditable="true"]',
+        'div[contenteditable="true"][data-tab]',
+        'div[contenteditable="true"]',
+      ];
+      let el = null;
+      let matchedSelector = null;
+      for (const s of selectors) {
+        el = document.querySelector(s);
+        if (el) break;
+      }
+      if (el) {
+        matchedSelector = selectors.find(
+          (s) => document.querySelector(s) === el
+        );
+        console.debug(
+          "[CONTENT] pasteIntoWhatsAppInput matched selector:",
+          matchedSelector,
+          el
+        );
+      }
+      if (!el) return false;
+
+      // Focus the input
+      el.focus();
+
+      // First attempt: use execCommand('insertText') if supported (inserts at caret)
+      try {
+        // place caret at end
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+
+        if (
+          document.queryCommandSupported &&
+          document.queryCommandSupported("insertText")
+        ) {
+          const ok = document.execCommand("insertText", false, text);
+          // some browsers still require an input event
+          el.dispatchEvent(new InputEvent("input", { bubbles: true }));
+          if (ok) return true;
+        }
+      } catch (e) {
+        // continue to fallback
+      }
+
+      // Fallback: insert a text node at the caret position
+      try {
+        const range2 = document.createRange();
+        range2.selectNodeContents(el);
+        range2.collapse(false);
+        const textNode = document.createTextNode(text);
+        range2.insertNode(textNode);
+        // move caret after inserted node
+        range2.setStartAfter(textNode);
+        range2.collapse(true);
+        const sel2 = window.getSelection();
+        sel2.removeAllRanges();
+        sel2.addRange(range2);
+        el.dispatchEvent(new InputEvent("input", { bubbles: true }));
+        return true;
+      } catch (e) {
+        // Last resort: set innerText/innerHTML
+        try {
+          if (typeof el.textContent !== "undefined") el.textContent = text;
+          else if (typeof el.innerText !== "undefined") el.innerText = text;
+          else
+            el.innerHTML = text
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;");
+          el.dispatchEvent(new InputEvent("input", { bubbles: true }));
+          return true;
+        } catch (ee) {
+          console.warn(
+            "[CONTENT] pasteIntoWhatsAppInput final fallback failed",
+            ee
+          );
+          return false;
+        }
+      }
+    } catch (e) {
+      console.warn("[CONTENT] pasteIntoWhatsAppInput failed", e);
+      return false;
     }
   }
 
