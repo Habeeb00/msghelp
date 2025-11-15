@@ -192,7 +192,7 @@ if (suggestReplyBtn) {
       const { manslaterMode = false } = await getStorage(["manslaterMode"]);
       const endpoint = manslaterMode
         ? "https://msghelp.onrender.com/suggest-reply"
-        : "https://example.com/sample-suggest";
+        : "https://msghelp.onrender.com/suggest-reply-general";
 
       const response = await fetch(endpoint, {
         method: "POST",
