@@ -51,43 +51,69 @@ function containsMedia(el) {
       existingBox.remove();
     }
 
+    // Find the chat container to position relative to it
+    const chatContainer = document.querySelector("#main");
+    if (!chatContainer) {
+      console.warn("[CONTENT] Chat container not found, delaying injection");
+      setTimeout(injectFloatingBox, 500);
+      return;
+    }
+
     const box = document.createElement("div");
     box.id = "msghelp-floating-box";
-    box.style.position = "fixed";
-    box.style.bottom = "24px";
-    box.style.right = "24px";
-    box.style.zIndex = "99999";
-    box.style.background = "#fff";
-    box.style.border = "1px solid #25d366";
-    box.style.color = "#000";
-    box.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
-    box.style.padding = "16px";
-    box.style.minWidth = "280px";
-    box.style.maxWidth = "350px";
+    box.style.position = "absolute";
+    box.style.top = "80px";
+    box.style.left = "50%";
+    box.style.transform = "translateX(-50%) translateY(-20px)";
+    box.style.zIndex = "1000";
+    box.style.background = "rgba(17, 27, 33, 0.95)";
+    box.style.backdropFilter = "blur(10px)";
+    box.style.color = "#e9edef";
+    box.style.borderRadius = "12px";
+    box.style.boxShadow =
+      "0 8px 24px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2)";
+    box.style.padding = "14px 18px";
+    box.style.minWidth = "320px";
+    box.style.maxWidth = "480px";
     box.style.fontFamily =
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    box.style.fontSize = "14px";
-    box.style.lineHeight = "1.4";
-    box.style.display = "block"; // Always visible by default
+      "Segoe UI, Helvetica Neue, Helvetica, Lucida Grande, Arial, Ubuntu, Cantarell, Fira Sans, sans-serif";
+    box.style.fontSize = "14.2px";
+    box.style.lineHeight = "1.5";
+    box.style.opacity = "0";
+    box.style.transition = "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
+    box.style.pointerEvents = "auto";
 
     box.innerHTML = `
-      <div style="display: flex; align-items: center; margin-bottom: 12px;">
-        <div style="width: 12px; height: 12px; background: #25d366; border-radius: 50%; margin-right: 8px;"></div>
-        <strong style="color: #25d366;">Message Helper</strong>
-        <button id="msghelp-close" style="margin-left: auto; background: none; border: none; font-size: 16px; cursor: pointer; padding: 0; color: #666;">×</button>
+      <div style="display: flex; align-items: center; margin-bottom: 10px; gap: 8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+        </svg>
+        <strong style="color: #e9edef; font-weight: 500; font-size: 14.5px; flex: 1;">Smart Reply</strong>
+        <button id="msghelp-close" style="background: none; border: none; cursor: pointer; padding: 4px; color: #8696a0; font-size: 20px; line-height: 1; transition: color 0.2s; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;" onmouseover="this.style.backgroundColor='rgba(255,255,255,0.1)'; this.style.color='#d9dee2';" onmouseout="this.style.backgroundColor='transparent'; this.style.color='#8696a0';">×</button>
       </div>
       <div id="msghelp-suggestions-container">
-        <div style="color: #666; font-style: italic;">Waiting for suggestions...</div>
+        <div style="color: #8696a0; font-style: italic; font-size: 13.5px;">Waiting for suggestions...</div>
       </div>
     `;
 
-    // Add close button functionality
+    // Add close button functionality with animation
     const closeBtn = box.querySelector("#msghelp-close");
     closeBtn.addEventListener("click", () => {
-      box.style.display = "none";
+      box.style.opacity = "0";
+      box.style.transform = "translateX(-50%) translateY(-30px)";
+      setTimeout(() => {
+        box.style.display = "none";
+      }, 300);
     });
 
-    document.body.appendChild(box);
+    chatContainer.appendChild(box);
+
+    // Trigger animation after a short delay
+    setTimeout(() => {
+      box.style.opacity = "1";
+      box.style.transform = "translateX(-50%) translateY(0)";
+    }, 50);
+
     console.log("[CONTENT] Floating box injected successfully");
   }
 
@@ -110,35 +136,51 @@ function containsMedia(el) {
       return;
     }
 
+    // Show the box with animation if hidden
+    if (box.style.display === "none" || box.style.opacity === "0") {
+      box.style.display = "block";
+      setTimeout(() => {
+        box.style.opacity = "1";
+        box.style.transform = "translateX(-50%) translateY(0)";
+      }, 50);
+    }
+
     if (!suggestions || suggestions.length === 0) {
       container.innerHTML =
-        '<div style="color: #666; font-style: italic;">No suggestions available</div>';
+        '<div style="color: #8696a0; font-style: italic; font-size: 13.5px;">No suggestions available</div>';
       // Keep the box visible even if no suggestions
       console.log("[CONTENT] No suggestions to display");
       return;
     }
+
+    // ...existing code...
 
     console.log(
       "[CONTENT] Creating suggestions list with",
       suggestions.length,
       "items"
     );
-    // Create suggestion list
+    // Create suggestion list with WhatsApp-like styling
     const suggestionsList = suggestions
       .map(
         (suggestion, index) => `
       <div class="msghelp-suggestion" data-text="${escapeHtml(suggestion)}" 
-           style="padding: 8px 12px; margin: 4px 0; background: #f0f0f0; border-radius: 8px; cursor: pointer; transition: background-color 0.2s;"
-           onmouseover="this.style.backgroundColor='#e0e0e0'" 
-           onmouseout="this.style.backgroundColor='#f0f0f0'">
-        ${escapeHtml(suggestion)}
+           style="padding: 10px 14px; margin: 6px 0; background: rgba(42, 57, 66, 0.9); border-radius: 8px; cursor: pointer; transition: all 0.2s ease; border: 1px solid transparent; font-size: 14px; color: #e9edef;"
+           onmouseover="this.style.backgroundColor='rgba(52, 67, 76, 1)'; this.style.borderColor='rgba(134, 150, 160, 0.3)'; this.style.transform='translateX(2px)';" 
+           onmouseout="this.style.backgroundColor='rgba(42, 57, 66, 0.9)'; this.style.borderColor='transparent'; this.style.transform='translateX(0)';">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+            <polyline points="9 11 12 14 22 4"></polyline>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+          </svg>
+          <span style="flex: 1;">${escapeHtml(suggestion)}</span>
+        </div>
       </div>
     `
       )
       .join("");
 
     container.innerHTML = suggestionsList;
-    box.style.display = "block";
     console.log("[CONTENT] Floating box updated and shown");
 
     // Add click handlers to suggestions
@@ -147,10 +189,18 @@ function containsMedia(el) {
         const suggestionText = item.dataset.text;
         copyToClipboard(suggestionText);
 
-        // Show feedback
-        item.style.backgroundColor = "#25d366";
-        item.style.color = "white";
-        item.innerHTML = "✓ Copied to clipboard!";
+        // Show feedback with WhatsApp-style animation
+        item.style.background = "rgba(37, 211, 102, 0.2)";
+        item.style.borderColor = "#25d366";
+        item.style.color = "#25d366";
+        item.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#25d366" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            <span>Copied to clipboard!</span>
+          </div>
+        `;
 
         setTimeout(() => {
           // Keep the box visible after copying
@@ -268,7 +318,7 @@ function containsMedia(el) {
           setTimeout(() => {
             isInitialized = true;
             console.log("[CONTENT] 🔄 Now capturing new messages only");
-            // Request a suggestion after context is loaded
+            // Request suggestion after context is loaded
             requestSuggestion();
           }, 1000);
         }, 1500); // Wait for chat to fully load
@@ -279,7 +329,7 @@ function containsMedia(el) {
           console.log(
             "[CONTENT] 🔄 Now capturing new messages only (context already loaded)"
           );
-          // Request a suggestion after context is loaded
+          // Request suggestion after context is loaded
           requestSuggestion();
         }, 500);
       }
@@ -603,6 +653,31 @@ function containsMedia(el) {
   // Request suggestion from popup/backend
   function requestSuggestion() {
     try {
+      // Show loading animation in floating box
+      const box = document.getElementById("msghelp-floating-box");
+      if (box) {
+        const container = box.querySelector("#msghelp-suggestions-container");
+        if (container) {
+          container.innerHTML =
+            '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;"><span class="msghelp-spinner" style="display:inline-block;width:16px;height:16px;border:2px solid rgba(37, 211, 102, 0.3);border-top:2px solid #25d366;border-radius:50%;animation:msghelp-spin 0.8s linear infinite;"></span> <span style="color:#8696a0;font-size:13.5px;">Generating reply...</span></div>';
+          // Add spinner animation style if not present
+          if (!document.getElementById("msghelp-spinner-style")) {
+            const style = document.createElement("style");
+            style.id = "msghelp-spinner-style";
+            style.textContent =
+              "@keyframes msghelp-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }";
+            document.head.appendChild(style);
+          }
+        }
+        // Show the box with animation if hidden
+        if (box.style.display === "none" || box.style.opacity === "0") {
+          box.style.display = "block";
+          setTimeout(() => {
+            box.style.opacity = "1";
+            box.style.transform = "translateX(-50%) translateY(0)";
+          }, 50);
+        }
+      }
       chrome.storage.local.get(["messages"], ({ messages = [] }) => {
         if (messages.length === 0) return;
 
@@ -744,7 +819,10 @@ function containsMedia(el) {
             ...messages.filter((m) => m.sessionId !== info.sessionId),
           ];
           const capped = capMessagesPerSession(updated, MAX_HISTORY);
-          chrome.storage.local.set({ messages: capped });
+          chrome.storage.local.set({ messages: capped }, () => {
+            // After context is saved, request a suggestion
+            requestSuggestion();
+          });
         } catch (e) {
           console.warn("[CONTENT] context save error", e);
         }

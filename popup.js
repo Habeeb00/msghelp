@@ -12,13 +12,11 @@ const resetBtn = document.getElementById("resetBtn");
 const debugBtn = document.getElementById("debugBtn");
 const testFloatingBtn = document.getElementById("testFloatingBtn");
 const suggestReplyBtn = document.getElementById("suggestReplyBtn");
-const suggestReplyGeneralBtn = document.getElementById("suggestReplyGeneralBtn");
 const contextInfo = document.getElementById("contextInfo");
 const contextCount = document.getElementById("contextCount");
 const newCount = document.getElementById("newCount");
 const currentSession = document.getElementById("currentSession");
-const API_ENDPOINT_FINE_TUNED = "https://msghelp.onrender.com/suggest-reply"; // Replace with your backend API endpoint
-const API_ENDPOINT_GENERAL = "https://msghelp.onrender.com/suggest-reply-general"; // New backend API endpoint for general model
+const API_ENDPOINT = "https://msghelp.onrender.com/suggest-reply"; // Replace with your backend API endpoint
 
 function formatTime(ts) {
   try {
@@ -168,125 +166,9 @@ if (suggestReplyBtn) {
         context_messages: contextMessages,
       };
 
-      console.log("[POPUP] Sending payload to backend (Fine-tuned):", payload);
+      console.log("[POPUP] Sending payload to backend:", payload);
 
-      const response = await fetch(API_ENDPOINT_FINE_TUNED, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Backend error: ${response.status} - ${errorData.detail || response.statusText}`);
-      }
-
-      const data = await response.json();
-      selftestResult.textContent = `Fine-tuned Suggestion: "${data.suggestion}" (Cached: ${data.cached})`;
-      console.log("[POPUP] Fine-tuned Reply suggestion:", data.suggestion);
-      setTimeout(() => (selftestResult.textContent = ""), 5000); // Display suggestion for 5 seconds
-
-    } catch (e) {
-      console.error("[POPUP] Error suggesting reply (Fine-tuned):", e);
-      selftestResult.textContent = `Error (Fine-tuned): ${e.message}`;
-      setTimeout(() => (selftestResult.textContent = ""), 5000);
-    }
-  });
-}
-
-// Suggest Reply (General) button handler
-if (suggestReplyGeneralBtn) {
-  suggestReplyGeneralBtn.addEventListener("click", async () => {
-    selftestResult.textContent = "Getting general reply suggestion...";
-    try {
-      const { messages = [] } = await chrome.storage.local.get(["messages"]);
-      if (messages.length === 0) {
-        selftestResult.textContent = "No messages to suggest a reply for.";
-        setTimeout(() => (selftestResult.textContent = ""), 2000);
-        return;
-      }
-
-      // The most recent message is the current message
-      const currentMessage = messages[0];
-      // The next 4 messages are context messages
-      const contextMessages = messages.slice(1, 5).map(msg => ({
-        text: msg.text,
-        type: msg.type,
-        timestamp: msg.timestamp
-      }));
-
-      const payload = {
-        current_message: {
-          text: currentMessage.text,
-          platform: currentMessage.platform,
-          timestamp: currentMessage.timestamp
-        },
-        context_messages: contextMessages
-      };
-
-      console.log("[POPUP] Sending payload to backend (General):", payload);
-
-      const response = await fetch(API_ENDPOINT_GENERAL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Backend error: ${response.status} - ${errorData.detail || response.statusText}`);
-      }
-
-      const data = await response.json();
-      selftestResult.textContent = `General Suggestion: "${data.suggestion}" (Model: ${data.model_used}, Cached: ${data.cached})`;
-      console.log("[POPUP] General Reply suggestion:", data.suggestion);
-      setTimeout(() => (selftestResult.textContent = ""), 5000); // Display suggestion for 5 seconds
-
-    } catch (e) {
-      console.error("[POPUP] Error suggesting reply (General):", e);
-      selftestResult.textContent = `Error (General): ${e.message}`;
-      setTimeout(() => (selftestResult.textContent = ""), 5000);
-    }
-  });
-}
-
-// Suggest Reply (General) button handler
-if (suggestReplyGeneralBtn) {
-  suggestReplyGeneralBtn.addEventListener("click", async () => {
-    selftestResult.textContent = "Getting general reply suggestion...";
-    try {
-      const { messages = [] } = await chrome.storage.local.get(["messages"]);
-      if (messages.length === 0) {
-        selftestResult.textContent = "No messages to suggest a reply for.";
-        setTimeout(() => (selftestResult.textContent = ""), 2000);
-        return;
-      }
-
-      // The most recent message is the current message
-      const currentMessage = messages[0];
-      // The next 4 messages are context messages
-      const contextMessages = messages.slice(1, 5).map(msg => ({
-        text: msg.text,
-        type: msg.type,
-        timestamp: msg.timestamp
-      }));
-
-      const payload = {
-        current_message: {
-          text: currentMessage.text,
-          platform: currentMessage.platform,
-          timestamp: currentMessage.timestamp
-        },
-        context_messages: contextMessages
-      };
-
-      console.log("[POPUP] Sending payload to backend (General):", payload);
-
-      const response = await fetch(API_ENDPOINT_GENERAL, {
+      const response = await fetch(API_ENDPOINT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -306,10 +188,25 @@ if (suggestReplyGeneralBtn) {
       const data = await response.json();
       selftestResult.textContent = `Suggestion: "${data.suggestion}" (Cached: ${data.cached})`;
       console.log("[POPUP] Reply suggestion:", data.suggestion);
+
+      // Send suggestions to content script to display in floating box
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (
+          tabs[0] &&
+          tabs[0].url &&
+          tabs[0].url.includes("web.whatsapp.com")
+        ) {
+          chrome.tabs.sendMessage(tabs[0].id, {
+            type: "SHOW_SUGGESTIONS",
+            suggestions: [data.suggestion], // Convert single suggestion to array
+          });
+        }
+      });
+
       setTimeout(() => (selftestResult.textContent = ""), 5000); // Display suggestion for 5 seconds
     } catch (e) {
-      console.error("[POPUP] Error suggesting reply (General):", e);
-      selftestResult.textContent = `Error (General): ${e.message}`;
+      console.error("[POPUP] Error suggesting reply:", e);
+      selftestResult.textContent = `Error: ${e.message}`;
       setTimeout(() => (selftestResult.textContent = ""), 5000);
     }
   });
