@@ -10,10 +10,12 @@ const exportBtn = document.getElementById("exportBtn");
 const scanBtn = document.getElementById("scanBtn");
 const resetBtn = document.getElementById("resetBtn");
 const debugBtn = document.getElementById("debugBtn");
+const suggestReplyBtn = document.getElementById("suggestReplyBtn");
 const contextInfo = document.getElementById("contextInfo");
 const contextCount = document.getElementById("contextCount");
 const newCount = document.getElementById("newCount");
 const currentSession = document.getElementById("currentSession");
+const API_ENDPOINT = "http://localhost:8000/suggest-reply"; // Replace with your backend API endpoint
 
 function formatTime(ts) {
   try {
@@ -132,6 +134,64 @@ selftestBtn.addEventListener("click", async () => {
     });
   });
 });
+
+// Suggest Reply button handler
+if (suggestReplyBtn) {
+  suggestReplyBtn.addEventListener("click", async () => {
+    selftestResult.textContent = "Getting reply suggestion...";
+    try {
+      const { messages = [] } = await chrome.storage.local.get(["messages"]);
+      if (messages.length === 0) {
+        selftestResult.textContent = "No messages to suggest a reply for.";
+        setTimeout(() => (selftestResult.textContent = ""), 2000);
+        return;
+      }
+
+      // The most recent message is the current message
+      const currentMessage = messages[0];
+      // The next 4 messages are context messages
+      const contextMessages = messages.slice(1, 5).map(msg => ({
+        text: msg.text,
+        type: msg.type,
+        timestamp: msg.timestamp
+      }));
+
+      const payload = {
+        current_message: {
+          text: currentMessage.text,
+          platform: currentMessage.platform,
+          timestamp: currentMessage.timestamp
+        },
+        context_messages: contextMessages
+      };
+
+      console.log("[POPUP] Sending payload to backend:", payload);
+
+      const response = await fetch(API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Backend error: ${response.status} - ${errorData.detail || response.statusText}`);
+      }
+
+      const data = await response.json();
+      selftestResult.textContent = `Suggestion: "${data.suggestion}" (Cached: ${data.cached})`;
+      console.log("[POPUP] Reply suggestion:", data.suggestion);
+      setTimeout(() => (selftestResult.textContent = ""), 5000); // Display suggestion for 5 seconds
+
+    } catch (e) {
+      console.error("[POPUP] Error suggesting reply:", e);
+      selftestResult.textContent = `Error: ${e.message}`;
+      setTimeout(() => (selftestResult.textContent = ""), 5000);
+    }
+  });
+}
 
 // clear messages
 clearBtn.addEventListener("click", () => {
