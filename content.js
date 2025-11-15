@@ -104,7 +104,7 @@ function containsMedia(el) {
     const info = getActiveChatInfo();
     const newSessionId = info.sessionId;
 
-    if (currentChatSession !== newSessionId) {
+    if (currentChatSession !== newSessionId && isInitialized) {
       console.log(
         `[CONTENT] 🔄 Chat changed from "${currentChatSession}" to "${newSessionId}"`
       );
