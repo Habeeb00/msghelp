@@ -385,7 +385,7 @@ async def suggest_reply_general(request: GeneralReplyRequest, background_tasks: 
         messages = [
             {
                 "role": "system",
-                "content": "You are a helpful assistant that suggests appropriate replies to messages. Provide a natural, contextual response."
+                "content": "You help people reply to their messages. Look at the conversation history to understand the context and tone. Then suggest what the person should reply back. Keep it natural and casual like how people actually text. Match their vibe whether its chill, excited, formal, or whatever. Just give the reply text itself, nothing else. No quotation marks, no extra explanation, just the message they should send."
             }
         ] + conversation
         
