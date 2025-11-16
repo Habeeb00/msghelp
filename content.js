@@ -72,9 +72,10 @@ function containsMedia(el) {
     // Find the chat container to position relative to it
     const chatContainer = document.querySelector("#main");
     if (!chatContainer) {
-      console.warn("[CONTENT] Chat container not found, delaying injection");
-      isInjecting = false; // Reset flag before retry
-      setTimeout(injectFloatingBox, 500);
+      // This case should ideally not be reached if waitForChatContainer is working correctly,
+      // but as a safeguard, reset injecting flag and log a warning.
+      console.warn("[CONTENT] Chat container not found during injectFloatingBox. This indicates a logic error or a very fast DOM change.");
+      isInjecting = false;
       return;
     }
 
@@ -1282,19 +1283,27 @@ function containsMedia(el) {
     }
   }
 
-  // Inject floating box when content script loads (with delay to avoid race conditions)
-  let initialInjectionScheduled = false;
-  function scheduleInitialInjection() {
-    if (initialInjectionScheduled) return;
-    initialInjectionScheduled = true;
-    setTimeout(() => {
-      console.log("[CONTENT] Running initial floating box injection");
+  // Wait for the chat container to be available before injecting the floating box
+  function waitForChatContainer() {
+    const chatContainer = document.querySelector("#main");
+    if (chatContainer) {
+      console.log("[CONTENT] Chat container found, injecting floating box.");
       injectFloatingBox();
-    }, 1000);
+    } else {
+      console.log("[CONTENT] Waiting for chat container to appear...");
+      const observer = new MutationObserver((mutationsList, observer) => {
+        if (document.querySelector("#main")) {
+          console.log("[CONTENT] Chat container appeared, injecting floating box.");
+          observer.disconnect();
+          injectFloatingBox();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
   }
 
-  // Start initial injection
-  scheduleInitialInjection();
+  // Start waiting for the chat container when content script loads
+  waitForChatContainer();
 
   function seen(key) {
     return recent.indexOf(key) !== -1;
@@ -1352,11 +1361,6 @@ function containsMedia(el) {
     }
   }
 
-  // Backwards-compatible active chat info extractor. Uses the title extractor above
-  // and falls back to URL hash when necessary.
-
-  // Remove duplicate function definition - use the one above
-  // ...existing code...
   // Attempt to retrieve the raw `data-pre-plain-text` attribute from a node
   function getPrePlainTextAttribute(el) {
     let node = el;
@@ -2025,23 +2029,10 @@ function containsMedia(el) {
       }
 
       // Re-inject floating UI so minimized state persists across session changes
-      // Only inject if no box exists or if injection is not in progress
-      const existingBox = document.getElementById("msghelp-floating-box");
-      if (!existingBox && !isInjecting) {
-        try {
-          console.log("[CONTENT] Injecting floating box for chat change");
-          injectFloatingBox();
-        } catch (e) {
-          console.warn(
-            "[CONTENT] injectFloatingBox failed during chat change",
-            e
-          );
-        }
-      } else {
-        console.log(
-          "[CONTENT] Skipping injection - box exists or injection in progress"
-        );
-      }
+      // When chat changes, we need to ensure the floating box is correctly injected/re-injected.
+      // Call waitForChatContainer, which will handle removal of old elements and re-injection.
+      console.log("[CONTENT] Chat changed, re-initializing floating UI via waitForChatContainer.");
+      waitForChatContainer();
 
       // Load context after chat fully loads (give time for messages to render)
       contextLoadingTimeout = setTimeout(() => {
