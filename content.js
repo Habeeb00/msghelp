@@ -460,18 +460,37 @@ function containsMedia(el) {
       closeBtn.style.transform = "scale(1)";
     });
     closeBtn.addEventListener("click", () => {
-      box.style.opacity = "0";
-      box.style.transform = "translateX(-50%) translateY(-30px)";
-      const bubble = document.getElementById("msghelp-minimized-bubble");
-      if (bubble) {
-        bubble.style.opacity = "0";
-        bubble.style.visibility = "hidden";
-        bubble.style.transform = "translateY(-50%) scale(0.3)";
+      // Close with the same minimize animation so children fade together
+      try {
+        minimizeFloatingBox();
+        // Additionally remove the box from DOM after animation end
+        const onEnd = () => {
+          try {
+            const b = document.getElementById("msghelp-floating-box");
+            if (b && b.parentElement) b.parentElement.removeChild(b);
+          } catch (e) {}
+          document.removeEventListener("msghelp-box-removed", onEnd);
+        };
+        // dispatch a custom event after a safe delay matching animation duration
+        setTimeout(() => {
+          const ev = new Event("msghelp-box-removed");
+          document.dispatchEvent(ev);
+        }, 520);
+        document.addEventListener("msghelp-box-removed", onEnd);
+      } catch (e) {
+        box.style.opacity = "0";
+        box.style.transform = "translateX(-50%) translateY(-30px)";
+        const bubble = document.getElementById("msghelp-minimized-bubble");
+        if (bubble) {
+          bubble.style.opacity = "0";
+          bubble.style.visibility = "hidden";
+          bubble.style.transform = "translateY(-50%) scale(0.3)";
+        }
+        setTimeout(() => {
+          box.style.display = "none";
+          if (bubble) bubble.style.display = "none";
+        }, 300);
       }
-      setTimeout(() => {
-        box.style.display = "none";
-        if (bubble) bubble.style.display = "none";
-      }, 300);
     });
 
     chatContainer.appendChild(box);
@@ -555,83 +574,90 @@ function containsMedia(el) {
       const style = document.createElement("style");
       style.id = "msghelp-apple-animations";
       style.textContent = `
+        /* Minimize: fast, springy shrink without any enlargement (scale <= 1) */
         @keyframes msghelp-minimize-spring {
-          0% { 
-            transform: translateX(-50%) translateY(0px) scale(1); 
-            opacity: 1; 
+          0% {
+            transform: translateX(-50%) translateY(0px) scale(1);
+            opacity: 1;
           }
-          25% { 
-            transform: translateX(-50%) translateY(-8px) scale(0.98); 
-            opacity: 0.95; 
+          18% {
+            transform: translateX(-50%) translateY(-10px) scale(0.94);
+            opacity: 0.92;
           }
-          50% { 
-            transform: translateX(-50%) translateY(-20px) scale(0.92); 
-            opacity: 0.7; 
+          40% {
+            transform: translateX(-50%) translateY(-22px) scale(0.88);
+            opacity: 0.68;
           }
-          75% { 
-            transform: translateX(-50%) translateY(-35px) scale(0.85); 
-            opacity: 0.4; 
+          65% {
+            transform: translateX(-50%) translateY(-32px) scale(0.83);
+            opacity: 0.36;
           }
-          100% { 
-            transform: translateX(-50%) translateY(-45px) scale(0.8); 
-            opacity: 0; 
+          100% {
+            transform: translateX(-50%) translateY(-45px) scale(0.8);
+            opacity: 0;
           }
         }
-        
+
+        /* Bubble appear stays snappy but avoids large overscale */
         @keyframes msghelp-bubble-appear {
-          0% { 
-            transform: translateY(-50%) scale(0.1); 
-            opacity: 0; 
+          0% {
+            transform: translateY(-50%) scale(0.08);
+            opacity: 0;
           }
-          50% { 
-            transform: translateY(-50%) scale(1.15); 
-            opacity: 0.8; 
+          50% {
+            transform: translateY(-50%) scale(1.04);
+            opacity: 0.92;
           }
-          100% { 
-            transform: translateY(-50%) scale(1); 
-            opacity: 1; 
+          80% {
+            transform: translateY(-50%) scale(0.98);
+            opacity: 0.99;
+          }
+          100% {
+            transform: translateY(-50%) scale(1);
+            opacity: 1;
           }
         }
-        
+
+        /* Expand: keep subtle overshoot small and mostly translate-based */
         @keyframes msghelp-expand-spring {
-          0% { 
-            transform: translateX(-50%) translateY(-45px) scale(0.8); 
-            opacity: 0; 
+          0% {
+            transform: translateX(-50%) translateY(-50px) scale(0.86);
+            opacity: 0;
           }
-          30% { 
-            transform: translateX(-50%) translateY(-10px) scale(1.03); 
-            opacity: 0.7; 
+          30% {
+            transform: translateX(-50%) translateY(-8px) scale(0.96);
+            opacity: 0.84;
           }
-          60% { 
-            transform: translateX(-50%) translateY(3px) scale(0.99); 
-            opacity: 0.9; 
+          58% {
+            transform: translateX(-50%) translateY(6px) scale(0.92);
+            opacity: 0.98;
           }
-          85% { 
-            transform: translateX(-50%) translateY(-1px) scale(1.01); 
-            opacity: 0.98; 
+          85% {
+            transform: translateX(-50%) translateY(-2px) scale(0.99);
+            opacity: 0.997;
           }
-          100% { 
-            transform: translateX(-50%) translateY(0px) scale(1); 
-            opacity: 1; 
+          100% {
+            transform: translateX(-50%) translateY(0px) scale(1);
+            opacity: 1;
           }
         }
-        
+
         @keyframes msghelp-bubble-disappear {
-          0% { 
-            transform: translateY(-50%) scale(1); 
-            opacity: 1; 
+          0% {
+            transform: translateY(-50%) scale(1);
+            opacity: 1;
           }
-          30% { 
-            transform: translateY(-50%) scale(0.9); 
-            opacity: 0.7; 
+          30% {
+            transform: translateY(-50%) scale(0.9);
+            opacity: 0.7;
           }
-          70% { 
-            transform: translateY(-50%) scale(0.6); 
-            opacity: 0.3; 
+          65% {
+            transform: translateY(-50%) scale(0.6);
+            opacity: 0.32;
           }
-          100% { 
-            transform: translateY(-50%) scale(0.5); 
-            opacity: 0; 
+          100% {
+            transform: translateY(-50%) scale(0.08);
+            opacity: 0;
           }
         }
       `;
@@ -654,11 +680,50 @@ function containsMedia(el) {
       // Stop float animation and animate out with spring effect
       box.style.animationName = "none";
       box.style.pointerEvents = "none";
+
+      // Prepare child elements to fade/transform smoothly with the box
+      try {
+        const children = box.querySelectorAll(
+          "button, textarea, input, select, [id^='msghelp-'], div, span"
+        );
+        children.forEach((el) => {
+          // Only apply to elements that are visible in the box
+          if (el === box) return;
+          el.style.willChange = "opacity, transform";
+          el.style.transition =
+            "opacity 380ms cubic-bezier(0.2,0.9,0.2,1), transform 420ms cubic-bezier(0.2,0.9,0.2,1)";
+          el.style.opacity = "1";
+        });
+        // Force layout so transitions will run together
+        void box.getBoundingClientRect();
+        // Start child fade-out in sync with box animation
+        children.forEach((el) => {
+          if (el === box) return;
+          el.style.opacity = "0";
+          // small upward nudge to match spring
+          el.style.transform = "translateY(-6px)";
+        });
+      } catch (e) {}
+
       box.style.animation =
         "msghelp-minimize-spring 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards";
 
       // After animation, hide fully
       const onBoxAnimationEnd = () => {
+        // Reset child styles and hide the box after animation
+        try {
+          const children = box.querySelectorAll(
+            "button, textarea, input, select, [id^='msghelp-'], div, span"
+          );
+          children.forEach((el) => {
+            if (el === box) return;
+            el.style.transition = "";
+            el.style.willChange = "";
+            el.style.opacity = "";
+            el.style.transform = "";
+          });
+        } catch (e) {}
+
         box.style.visibility = "hidden";
         box.style.animation = "none";
         box.removeEventListener("animationend", onBoxAnimationEnd);
