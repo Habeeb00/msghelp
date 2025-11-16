@@ -74,7 +74,9 @@ function containsMedia(el) {
     if (!chatContainer) {
       // This case should ideally not be reached if waitForChatContainer is working correctly,
       // but as a safeguard, reset injecting flag and log a warning.
-      console.warn("[CONTENT] Chat container not found during injectFloatingBox. This indicates a logic error or a very fast DOM change.");
+      console.warn(
+        "[CONTENT] Chat container not found during injectFloatingBox. This indicates a logic error or a very fast DOM change."
+      );
       isInjecting = false;
       return;
     }
@@ -82,13 +84,20 @@ function containsMedia(el) {
     // Read persisted minimized state so the UI persists across session/chat changes
     try {
       chrome.storage.local.get(["msghelpIsMinimized"], (res) => {
-        try {
-          isMinimized = !!res.msghelpIsMinimized;
-        } catch (e) {
+        // Only minimize if the stored value is boolean true
+        if (typeof res.msghelpIsMinimized === "boolean") {
+          isMinimized = res.msghelpIsMinimized;
+        } else if (res.msghelpIsMinimized === "true") {
+          // If value is string 'true', treat as not minimized and reset to false
+          isMinimized = false;
+          chrome.storage.local.set({ msghelpIsMinimized: false });
+        } else {
           isMinimized = false;
         }
-        // Create minimized bubble first
-        createMinimizedBubble(chatContainer);
+        // Only create the minimized bubble if minimized; otherwise render only the box
+        if (isMinimized) {
+          createMinimizedBubble(chatContainer);
+        }
         // Create main floating box
         createMainFloatingBox(chatContainer);
         // Reset injection flag
@@ -101,7 +110,8 @@ function containsMedia(el) {
         "[CONTENT] chrome.storage unavailable, using in-memory minimized state",
         e
       );
-      createMinimizedBubble(chatContainer);
+      isMinimized = false;
+      // Not minimized by default, do not create bubble here
       createMainFloatingBox(chatContainer);
       // Reset injection flag
       isInjecting = false;
@@ -111,6 +121,11 @@ function containsMedia(el) {
 
   // Create the minimized bubble that appears at the side
   function createMinimizedBubble(chatContainer) {
+    // Ensure any existing bubble is removed before rendering a new one
+    const prev = document.getElementById("msghelp-minimized-bubble");
+    if (prev && prev.parentElement) {
+      prev.parentElement.removeChild(prev);
+    }
     const bubble = document.createElement("div");
     bubble.id = "msghelp-minimized-bubble";
     bubble.style.position = "absolute";
@@ -121,10 +136,10 @@ function containsMedia(el) {
     bubble.style.width = "60px";
     bubble.style.height = "60px";
     bubble.style.borderRadius = "50%";
-    bubble.style.background = "rgba(255, 255, 255, 0.08)";
+    bubble.style.background = "rgba(255, 255, 255, 0.22)";
     bubble.style.backdropFilter = "blur(20px)";
     bubble.style.WebkitBackdropFilter = "blur(20px)";
-    bubble.style.border = "1px solid rgba(255, 255, 255, 0.2)";
+    bubble.style.border = "1.5px solid rgba(180, 180, 180, 0.32)";
     bubble.style.cursor = "pointer";
     bubble.style.display = "flex";
     bubble.style.alignItems = "center";
@@ -132,7 +147,8 @@ function containsMedia(el) {
     // Use specific transitions for transform & opacity for smoother motion
     bubble.style.transition =
       "transform 420ms cubic-bezier(0.2,0.9,0.2,1), opacity 320ms cubic-bezier(0.2,0.9,0.2,1)";
-    bubble.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.12)";
+    bubble.style.boxShadow =
+      "0 8px 32px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(0,0,0,0.10)";
     bubble.style.opacity = isMinimized ? "1" : "0";
     bubble.style.visibility = isMinimized ? "visible" : "hidden";
     bubble.style.transform = isMinimized
@@ -168,6 +184,14 @@ function containsMedia(el) {
     });
 
     chatContainer.appendChild(bubble);
+  }
+
+  // Helper to remove bubble from UI completely
+  function removeMinimizedBubble() {
+    const bubble = document.getElementById("msghelp-minimized-bubble");
+    if (bubble && bubble.parentElement) {
+      bubble.parentElement.removeChild(bubble);
+    }
   }
 
   // Create the main floating box
@@ -512,7 +536,19 @@ function containsMedia(el) {
   function minimizeFloatingBox() {
     isMinimized = true;
     const box = document.getElementById("msghelp-floating-box");
-    const bubble = document.getElementById("msghelp-minimized-bubble");
+    let bubble = document.getElementById("msghelp-minimized-bubble");
+
+    // Re-render a fresh bubble anchored to the chat container
+    try {
+      const chatContainer = document.querySelector("#main");
+      if (chatContainer) {
+        if (bubble) {
+          bubble.remove();
+        }
+        createMinimizedBubble(chatContainer);
+        bubble = document.getElementById("msghelp-minimized-bubble");
+      }
+    } catch (e) {}
 
     // Add Apple-like animation styles if not present
     if (!document.getElementById("msghelp-apple-animations")) {
@@ -594,7 +630,7 @@ function containsMedia(el) {
             opacity: 0.3; 
           }
           100% { 
-            transform: translateY(-50%) scale(0.1); 
+            transform: translateY(-50%) scale(0.5); 
             opacity: 0; 
           }
         }
@@ -604,11 +640,14 @@ function containsMedia(el) {
 
     // Prepare bubble to show with spring animation
     if (bubble) {
+      // Always make bubble visible and interactive immediately
       bubble.style.display = "flex";
-      bubble.style.pointerEvents = "none";
+      bubble.style.visibility = "visible";
+      bubble.style.opacity = "1";
+      bubble.style.pointerEvents = "auto";
+      // Start animation for visual effect
       bubble.style.animation =
         "msghelp-bubble-appear 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards";
-      bubble.style.visibility = "visible";
     }
 
     if (box) {
@@ -658,10 +697,12 @@ function containsMedia(el) {
         "msghelp-bubble-disappear 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards";
 
       const onBubbleAnimationEnd = () => {
-        bubble.style.display = "none";
-        bubble.style.visibility = "hidden";
-        bubble.style.animation = "none";
-        bubble.removeEventListener("animationend", onBubbleAnimationEnd);
+        try {
+          bubble.removeEventListener("animationend", onBubbleAnimationEnd);
+          if (bubble && bubble.parentElement) {
+            bubble.parentElement.removeChild(bubble);
+          }
+        } catch (e) {}
       };
       bubble.addEventListener("animationend", onBubbleAnimationEnd);
     }
@@ -1293,7 +1334,9 @@ function containsMedia(el) {
       console.log("[CONTENT] Waiting for chat container to appear...");
       const observer = new MutationObserver((mutationsList, observer) => {
         if (document.querySelector("#main")) {
-          console.log("[CONTENT] Chat container appeared, injecting floating box.");
+          console.log(
+            "[CONTENT] Chat container appeared, injecting floating box."
+          );
           observer.disconnect();
           injectFloatingBox();
         }
@@ -2031,7 +2074,9 @@ function containsMedia(el) {
       // Re-inject floating UI so minimized state persists across session changes
       // When chat changes, we need to ensure the floating box is correctly injected/re-injected.
       // Call waitForChatContainer, which will handle removal of old elements and re-injection.
-      console.log("[CONTENT] Chat changed, re-initializing floating UI via waitForChatContainer.");
+      console.log(
+        "[CONTENT] Chat changed, re-initializing floating UI via waitForChatContainer."
+      );
       waitForChatContainer();
 
       // Load context after chat fully loads (give time for messages to render)
