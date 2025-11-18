@@ -327,7 +327,7 @@ function containsMedia(el) {
             <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
           </svg>
         </div>
-        <strong style="color: rgba(255, 255, 255, 0.95); font-weight: 600; font-size: 16px; flex: 1; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); letter-spacing: 0.3px;">Reply GPT</strong>
+        <strong style="color: rgba(255, 255, 255, 0.95); font-weight: 600; font-size: 16px; flex: 1; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); letter-spacing: 0.3px;">Texty</strong>
         <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
           <button id="msghelp-manslater-toggle" style="appearance:none;border:1px solid rgba(255,255,255,0.14);background:transparent;color:rgba(255,255,255,0.9);padding:6px 10px;border-radius:12px;font-size:12px;cursor:pointer;transition:all 0.18s ease;">Women: Off</button>
         </div>
@@ -1163,7 +1163,7 @@ function containsMedia(el) {
               <div style="display: flex; align-items: center; gap: 12px; padding: 16px 8px; text-align: center;">
                 <div style="flex: 1;">
                   <div style="color: rgba(255, 255, 255, 0.9); font-size: 14px; font-weight: 500; margin-bottom: 4px;">
-                    Waiting for reply...
+                    Don't be Desperate. Waiting for reply...
                   </div>
                   <div style="color: rgba(255, 255, 255, 0.6); font-size: 13px; line-height: 1.4;">
                     Don't ruin your self respect ,soldier 💬
