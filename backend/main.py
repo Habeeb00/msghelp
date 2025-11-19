@@ -5,9 +5,8 @@ from together import Together
 import os
 from typing import Optional, List, Dict
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 import hashlib
-import json
 
 # LangGraph imports
 from langgraph.graph import StateGraph, END
@@ -30,25 +29,28 @@ app.add_middleware(
 # Initialize Together AI
 client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
 FINE_TUNED_MODEL = os.getenv("FINE_TUNED_MODEL", "your-fine-tuned-model-id")
+GENERAL_MODEL = os.getenv("GENERAL_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo")
 
-# In-memory storage (use Redis in production)
+# In-memory storage
 sessions = {}
 reply_cache = {}
 
 CONFIG = {
-    "CONTEXT_WINDOW": 4,  # Last 4 messages as context
-    "CACHE_TTL": 600,  # 10 minutes
-    "SESSION_TTL": 3600,  # 1 hour
+    "CONTEXT_WINDOW": 4,
+    "CACHE_TTL": 600,
+    "SESSION_TTL": 3600,
     "MAX_TOKENS": 512,
 }
 
 
-# State definition
+# State definition - unified for both models
 class ReplySuggestionState(TypedDict):
     current_message: Dict
     context_messages: List[Dict]
     conversation_history: List[Dict]
     reply_suggestion: str
+    model_type: str  # "fine-tuned" or "general"
+    model_name: str
 
 
 # Pydantic models
@@ -66,23 +68,11 @@ class CurrentMessage(BaseModel):
 
 class SuggestReplyRequest(BaseModel):
     current_message: CurrentMessage
-    context_messages: List[ContextMessage]  # Last 4 messages
+    context_messages: List[ContextMessage]
     session_id: Optional[str] = None
 
 
 class SuggestReplyResponse(BaseModel):
-    suggestion: str
-    session_id: str
-    cached: bool = False
-
-
-class GeneralReplyRequest(BaseModel):
-    current_message: CurrentMessage
-    context_messages: List[ContextMessage]  # Last 4 messages
-    session_id: Optional[str] = None
-
-
-class GeneralReplyResponse(BaseModel):
     suggestion: str
     session_id: str
     model_used: str
@@ -90,10 +80,10 @@ class GeneralReplyResponse(BaseModel):
 
 
 # Cache helpers
-def get_cache_key(current_msg: str, context: List[Dict]) -> str:
-    """Generate cache key from current message + context"""
+def get_cache_key(current_msg: str, context: List[Dict], model_type: str) -> str:
+    """Generate cache key from current message + context + model type"""
     context_str = "|".join([f"{m['type']}:{m['text']}" for m in context])
-    content = f"{current_msg}::{context_str}"
+    content = f"{model_type}::{current_msg}::{context_str}"
     return hashlib.md5(content.encode()).hexdigest()
 
 
@@ -115,7 +105,6 @@ def set_cache(key: str, suggestion: str):
         "timestamp": datetime.now().timestamp()
     }
     
-    # Clean old entries if cache too large
     if len(reply_cache) > 100:
         cleanup_cache()
 
@@ -136,7 +125,6 @@ def get_session(session_id: str) -> Optional[Dict]:
     """Get session state"""
     if session_id in sessions:
         session = sessions[session_id]
-        # Check if expired
         if datetime.now().timestamp() - session["last_activity"] < CONFIG["SESSION_TTL"]:
             return session
         else:
@@ -152,13 +140,12 @@ def save_session(session_id: str, state: Dict):
     }
 
 
-# LangGraph Nodes
+# LangGraph Nodes - Unified for both models
 def build_conversation_node(state: ReplySuggestionState) -> ReplySuggestionState:
     """Build the conversation history for the model"""
     context_messages = state["context_messages"]
     current_message = state["current_message"]
     
-    # Build conversation history: context messages + current message
     conversation = []
     
     # Add context messages (oldest to newest)
@@ -169,7 +156,7 @@ def build_conversation_node(state: ReplySuggestionState) -> ReplySuggestionState
             "content": msg["text"]
         })
     
-    # Add current message (the one we need to reply to)
+    # Add current message
     conversation.append({
         "role": "user",
         "content": current_message["text"]
@@ -182,21 +169,56 @@ def build_conversation_node(state: ReplySuggestionState) -> ReplySuggestionState
 
 
 def generate_reply_node(state: ReplySuggestionState) -> ReplySuggestionState:
-    """Generate reply suggestion using fine-tuned model"""
+    """Generate reply suggestion - handles both fine-tuned and general models"""
     conversation_history = state["conversation_history"]
+    model_type = state["model_type"]
+    model_name = state["model_name"]
     
     try:
-        # Add system prompt for better context
+        # Different system prompts based on model type
+        if model_type == "general":
+            system_content = (
+                "You help people reply to their messages. Look at the conversation history "
+                "to understand the context and tone. Then suggest what the person should reply back. "
+                "Keep it natural and casual like how people actually text. Match their vibe whether "
+                "its chill, excited, formal, or whatever. Just give the reply text itself, nothing else. "
+                "No quotation marks, no extra explanation, just the message they should send."
+            )
+        else:
+            system_content = (
+                "You are Manslater-Reply, an assistant that generates the perfect reply to someone's message based on the chat context.\n\n"
+                "Your job:\n"
+                "Given context messages (previous conversation) and the current message (what the other person just said), "
+                "you must create a smooth, emotionally intelligent, flirty/cheeky/nonchalant response that fits the Manslater vibe:\n"
+                "- slightly playful\n"
+                "- confident\n"
+                "- warm but not needy\n"
+                "- subtly charming\n"
+                "- never dry or robotic\n\n"
+                "Rules:\n"
+                "- Understand the tone from the context and maintain consistency\n"
+                "- Never over-explain—keep it human and natural\n"
+                "- Add emotion when needed (cute, warm, reassuring, teasing, or romantic)\n"
+                "- If the message needs comfort → be gentle\n"
+                "- If the message is dry → spice it up\n"
+                "- If the message is flirty → match energy or increase slightly\n"
+                "- If the message is confusing → reply in a cool, calm, manlike manner\n"
+                "- If the message requires a question → ask one smoothly\n"
+                "- Never lecture, never sound formal\n"
+                "- Be VERY CHEEKY in your suggestions\n\n"
+                "Output format: Only output the reply text. Nothing else. No quotation marks, no explanation."
+            )
+        
         messages = [
             {
                 "role": "system",
-                "content": "You are a helpful assistant that suggests appropriate replies to messages. Provide a natural, contextual response."
+                "content": system_content
             }
         ] + conversation_history
         
-        # Call fine-tuned model
+        # Call the appropriate model
         response = client.chat.completions.create(
-            model=FINE_TUNED_MODEL,
+            model=model_name,
             messages=messages,
             max_tokens=CONFIG["MAX_TOKENS"],
             temperature=0.7,
@@ -216,7 +238,7 @@ def generate_reply_node(state: ReplySuggestionState) -> ReplySuggestionState:
 
 # Create LangGraph workflow
 def create_reply_graph():
-    """Create the reply suggestion workflow"""
+    """Create the unified reply suggestion workflow"""
     workflow = StateGraph(ReplySuggestionState)
     
     workflow.add_node("build_conversation", build_conversation_node)
@@ -232,24 +254,23 @@ def create_reply_graph():
 reply_graph = create_reply_graph()
 
 
-@app.post("/suggest-reply", response_model=SuggestReplyResponse)
-async def suggest_reply(request: SuggestReplyRequest, background_tasks: BackgroundTasks):
+async def process_reply_suggestion(
+    request: SuggestReplyRequest,
+    model_type: str,
+    background_tasks: BackgroundTasks
+) -> SuggestReplyResponse:
     """
-    Generate reply suggestion for current message using last 4 messages as context.
-    
-    Flow:
-    1. Receives current incoming message + last 4 messages as context
-    2. Builds conversation history
-    3. Calls fine-tuned model to generate appropriate reply
-    4. Returns suggested reply text
+    Unified processing function for both fine-tuned and general models
     """
-    
     # Validate context window
     if len(request.context_messages) > CONFIG["CONTEXT_WINDOW"]:
         raise HTTPException(
             status_code=400,
             detail=f"Context messages exceed maximum of {CONFIG['CONTEXT_WINDOW']}"
         )
+    
+    # Determine model
+    model_name = FINE_TUNED_MODEL if model_type == "fine-tuned" else GENERAL_MODEL
     
     # Get or create session
     session_id = request.session_id or str(uuid.uuid4())
@@ -258,19 +279,21 @@ async def suggest_reply(request: SuggestReplyRequest, background_tasks: Backgrou
     # Check cache
     cache_key = get_cache_key(
         request.current_message.text,
-        [m.dict() for m in request.context_messages]
+        [m.dict() for m in request.context_messages],
+        model_type
     )
     
     cached_suggestion = get_from_cache(cache_key)
     if cached_suggestion:
-        print(f"[CACHE HIT] for session {session_id}")
+        print(f"[CACHE HIT] {model_type} model for session {session_id}")
         return SuggestReplyResponse(
             suggestion=cached_suggestion,
             session_id=session_id,
+            model_used=model_name,
             cached=True
         )
     
-    print(f"[PROCESSING] Message with {len(request.context_messages)} context messages")
+    print(f"[PROCESSING] {model_type} model with {len(request.context_messages)} context messages")
     
     try:
         # Prepare state for LangGraph
@@ -278,7 +301,9 @@ async def suggest_reply(request: SuggestReplyRequest, background_tasks: Backgrou
             "current_message": request.current_message.dict(),
             "context_messages": [m.dict() for m in request.context_messages],
             "conversation_history": [],
-            "reply_suggestion": ""
+            "reply_suggestion": "",
+            "model_type": model_type,
+            "model_name": model_name
         }
         
         # Run through workflow
@@ -297,18 +322,18 @@ async def suggest_reply(request: SuggestReplyRequest, background_tasks: Backgrou
         
         background_tasks.add_task(save_session, session_id, session_state)
         
-        print(f"[SUCCESS] Generated reply for session {session_id}")
+        print(f"[SUCCESS] Generated reply using {model_type} model for session {session_id}")
         
         return SuggestReplyResponse(
             suggestion=reply_suggestion,
             session_id=session_id,
+            model_used=model_name,
             cached=False
         )
         
     except Exception as e:
         print(f"[ERROR] {str(e)}")
         
-        # Handle rate limits
         if "rate limit" in str(e).lower():
             raise HTTPException(
                 status_code=429,
@@ -321,125 +346,22 @@ async def suggest_reply(request: SuggestReplyRequest, background_tasks: Backgrou
         )
 
 
-@app.post("/suggest-reply-general", response_model=GeneralReplyResponse)
-async def suggest_reply_general(request: GeneralReplyRequest, background_tasks: BackgroundTasks):
+@app.post("/suggest-reply", response_model=SuggestReplyResponse)
+async def suggest_reply(request: SuggestReplyRequest, background_tasks: BackgroundTasks):
     """
-    Generate reply suggestion using a GENERAL LLM (not fine-tuned).
-    Same format as /suggest-reply but uses general model like Llama 3.1.
-    
-    Flow:
-    1. Receives current incoming message + last 4 messages as context
-    2. Builds conversation history
-    3. Calls GENERAL LLM to generate appropriate reply
-    4. Returns suggested reply text
+    Generate reply suggestion using fine-tuned model.
+    Uses unified LangGraph workflow.
     """
-    
-    # Use general model
-    GENERAL_MODEL = os.getenv("GENERAL_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo")
-    
-    # Validate context window
-    if len(request.context_messages) > CONFIG["CONTEXT_WINDOW"]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Context messages exceed maximum of {CONFIG['CONTEXT_WINDOW']}"
-        )
-    
-    # Get or create session
-    session_id = request.session_id or str(uuid.uuid4())
-    session_state = get_session(session_id)
-    
-    # Check cache (separate cache key for general model)
-    cache_key = f"general_{get_cache_key(request.current_message.text, [m.dict() for m in request.context_messages])}"
-    
-    cached_suggestion = get_from_cache(cache_key)
-    if cached_suggestion:
-        print(f"[CACHE HIT] General model for session {session_id}")
-        return GeneralReplyResponse(
-            suggestion=cached_suggestion,
-            session_id=session_id,
-            model_used=GENERAL_MODEL,
-            cached=True
-        )
-    
-    print(f"[PROCESSING] General model with {len(request.context_messages)} context messages")
-    
-    try:
-        # Build conversation history: context messages + current message
-        conversation = []
-        
-        # Add context messages (oldest to newest)
-        for msg in reversed(request.context_messages):
-            role = "assistant" if msg.type == "outgoing" else "user"
-            conversation.append({
-                "role": role,
-                "content": msg.text
-            })
-        
-        # Add current message (the one we need to reply to)
-        conversation.append({
-            "role": "user",
-            "content": request.current_message.text
-        })
-        
-        # Add system prompt
-        messages = [
-            {
-                "role": "system",
-                "content": "You help people reply to their messages. Look at the conversation history to understand the context and tone. Then suggest what the person should reply back. Keep it natural and casual like how people actually text. Match their vibe whether its chill, excited, formal, or whatever. Just give the reply text itself, nothing else. No quotation marks, no extra explanation, just the message they should send."
-            }
-        ] + conversation
-        
-        # Call general LLM
-        response = client.chat.completions.create(
-            model=GENERAL_MODEL,
-            messages=messages,
-            max_tokens=CONFIG["MAX_TOKENS"],
-            temperature=0.7,
-            top_p=0.9,
-        )
-        
-        reply_suggestion = response.choices[0].message.content.strip()
-        
-        # Cache the result
-        background_tasks.add_task(set_cache, cache_key, reply_suggestion)
-        
-        # Update session
-        state_data = {
-            "current_message": request.current_message.dict(),
-            "context_messages": [m.dict() for m in request.context_messages],
-            "reply_suggestion": reply_suggestion
-        }
-        
-        if session_state:
-            session_state["state"] = state_data
-        else:
-            session_state = {"state": state_data}
-        
-        background_tasks.add_task(save_session, session_id, session_state)
-        
-        print(f"[SUCCESS] Generated reply using general model for session {session_id}")
-        
-        return GeneralReplyResponse(
-            suggestion=reply_suggestion,
-            session_id=session_id,
-            model_used=GENERAL_MODEL,
-            cached=False
-        )
-        
-    except Exception as e:
-        print(f"[ERROR] {str(e)}")
-        
-        # Handle rate limits
-        if "rate limit" in str(e).lower():
-            raise HTTPException(
-                status_code=429,
-                detail="Too many requests. Please try again in a moment."
-            )
-        
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate reply: {str(e)}"
-        )
+    return await process_reply_suggestion(request, "fine-tuned", background_tasks)
+
+
+@app.post("/suggest-reply-general", response_model=SuggestReplyResponse)
+async def suggest_reply_general(request: SuggestReplyRequest, background_tasks: BackgroundTasks):
+    """
+    Generate reply suggestion using general LLM (Llama 3.1).
+    Uses unified LangGraph workflow.
+    """
+    return await process_reply_suggestion(request, "general", background_tasks)
 
 
 @app.delete("/session/{session_id}")
@@ -473,7 +395,8 @@ async def health():
     
     return {
         "status": "healthy",
-        "model": FINE_TUNED_MODEL,
+        "fine_tuned_model": FINE_TUNED_MODEL,
+        "general_model": GENERAL_MODEL,
         "active_sessions": len(sessions),
         "cached_replies": len(reply_cache)
     }
@@ -482,29 +405,30 @@ async def health():
 @app.get("/")
 async def root():
     return {
-        "message": "Reply Suggestion API with Context Window + General Chat",
-        "model": FINE_TUNED_MODEL,
+        "message": "Unified Reply Suggestion API with LangGraph",
+        "models": {
+            "fine_tuned": FINE_TUNED_MODEL,
+            "general": GENERAL_MODEL
+        },
         "context_window": CONFIG["CONTEXT_WINDOW"],
         "endpoints": {
             "/suggest-reply": {
                 "method": "POST",
                 "description": "Get reply suggestions with fine-tuned model",
-                "model": "Fine-tuned model",
-                "features": ["Context-aware", "Caching", "Session management"]
+                "model": "Fine-tuned model"
             },
             "/suggest-reply-general": {
                 "method": "POST",
-                "description": "Get reply suggestions with general LLM (Llama 3.1)",
-                "model": "General LLM",
-                "features": ["Same format as suggest-reply", "Uses general model instead"]
+                "description": "Get reply suggestions with general LLM",
+                "model": "General LLM (Llama 3.1)"
             }
         },
         "features": [
+            "Unified LangGraph workflow",
             "Context-aware reply suggestions",
-            "Fine-tuned model support",
-            "General LLM support",
-            "Response caching",
-            "Session management"
+            "Response caching with model-specific keys",
+            "Session management",
+            "Both fine-tuned and general model support"
         ]
     }
 
